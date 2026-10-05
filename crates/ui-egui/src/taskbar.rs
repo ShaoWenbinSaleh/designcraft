@@ -85,7 +85,12 @@ fn text_controls(app: &mut DesignApp, ui: &mut Ui, in_text: bool) {
     let t = Tokens::get(ui.ctx());
     if !in_text {
         let (main, seg) = split_button(ui, "fit-text", "Fit Text");
-        if main.on_hover_text("Fit frame height to text").clicked() {
+        if main
+            .on_hover_ui(|ui| {
+                crate::rtl::label(ui, crate::i18n::tr(&app.ui.language, "Fit frame height to text"));
+            })
+            .clicked()
+        {
             let _ = app.run("object.textFrameOptions", json!({"autoSize": "heightOnly"}));
         }
         egui::Popup::menu(&seg).show(|ui| {
@@ -234,13 +239,15 @@ fn more(app: &mut DesignApp, ui: &mut Ui) {
     for k in 0..3 {
         ui.painter().circle_filled(pos2(r.min.x + 4.0 + k as f32 * 7.0, r.center().y), 1.8, t.icon);
     }
-    let resp = resp.on_hover_text("More Options");
+    let resp = resp.on_hover_ui(|ui| {
+        crate::rtl::label(ui, crate::i18n::tr(&app.ui.language, "More Options"));
+    });
     egui::Popup::menu(&resp).show(|ui| {
-        if ui.button("Hide Bar").clicked() {
+        if ui.button(crate::rtl::widget(ui, crate::i18n::tr(&app.ui.language, "Hide Bar"))).clicked() {
             app.ui.task_bar = false;
             ui.close();
         }
-        if ui.button("Properties Panel").clicked() {
+        if ui.button(crate::rtl::widget(ui, crate::i18n::tr(&app.ui.language, "Properties Panel"))).clicked() {
             let _ = app.run("window.panel", json!({"panel": "properties"}));
             ui.close();
         }

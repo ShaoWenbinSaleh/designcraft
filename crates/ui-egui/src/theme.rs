@@ -256,6 +256,16 @@ pub fn install_fonts(ctx: &egui::Context) {
     fonts.families.entry(FontFamily::Proportional).or_default().insert(0, "ui".into());
     fonts.families.entry(FontFamily::Monospace).or_default().insert(0, "mono".into());
     fonts.families.insert(FontFamily::Name("semibold".into()), vec!["ui-semibold".into(), "ui".into()]);
+    // Bundle a CJK fallback so interface languages work on every platform, including WASM.
+    add(&mut fonts, "cjk", include_bytes!("../../../assets/fonts/NotoSansCJKsc-Regular.otf"));
+    add(&mut fonts, "arabic", include_bytes!("../../../assets/fonts/NotoSansArabic.ttf"));
+    // Keep Arabic letters and spaces in the same shaping run.
+    for family in ["arabic", "arabic-semibold"] {
+        fonts.families.insert(FontFamily::Name(family.into()), vec!["arabic".into(), "ui".into(), "cjk".into()]);
+    }
+    for family in [FontFamily::Proportional, FontFamily::Monospace, FontFamily::Name("semibold".into())] {
+        fonts.families.entry(family).or_default().extend(["arabic".into(), "cjk".into()]);
+    }
     ctx.set_fonts(fonts);
 }
 

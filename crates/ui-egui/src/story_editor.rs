@@ -66,7 +66,10 @@ pub fn show(app: &mut DesignApp, ctx: &egui::Context) {
                 if let Some(o) = overset {
                     ui.add_space(6.0);
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("OVERSET").color(egui::Color32::from_rgb(230, 40, 40)).strong());
+                        ui.label(crate::rtl::widget(
+                            ui,
+                            egui::RichText::new(crate::i18n::tr(&app.ui.language, "OVERSET")).color(egui::Color32::from_rgb(230, 40, 40)).strong(),
+                        ));
                         ui.label(
                             egui::RichText::new(format!("{} characters don't fit", story.text[o.min(story.text.len())..].chars().count()))
                                 .color(t.text_dim),
