@@ -64,7 +64,7 @@ pub fn show(app: &mut DesignApp, ui: &mut egui::Ui) {
     let mut insert: Option<char> = None;
     if !st.recent.is_empty() {
         ui.horizontal_wrapped(|ui| {
-            ui.label(egui::RichText::new("Recently Used").size(10.5).color(t.text_dim));
+            crate::rtl::label(ui, egui::RichText::new(crate::i18n::tr(&app.ui.language, "Recently Used")).size(10.5).color(t.text_dim));
             for c in st.recent.clone() {
                 if ui.small_button(c.to_string()).on_hover_text(format!("U+{:04X}", c as u32)).clicked() {
                     insert = Some(c);

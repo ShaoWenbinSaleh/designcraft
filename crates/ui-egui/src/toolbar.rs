@@ -182,13 +182,25 @@ fn fill_stroke_proxy(app: &mut DesignApp, ui: &mut egui::Ui, width: f32) {
     let (row, _) = ui.allocate_exact_size(vec2(width, 11.0), Sense::hover());
     let def = egui::Rect::from_min_size(egui::pos2(x0, row.min.y), vec2(10.0, 10.0));
     icons::paint(ui.painter(), def, "default-colors", t.icon);
-    if ui.interact(def, ui.id().with("proxy_default"), Sense::click()).on_hover_text("Default Fill and Stroke (D)").clicked() {
+    if ui
+        .interact(def, ui.id().with("proxy_default"), Sense::click())
+        .on_hover_ui(|ui| {
+            crate::rtl::label(ui, crate::i18n::tr(&app.ui.language, "Default Fill and Stroke (D)"));
+        })
+        .clicked()
+    {
         let _ = app.run("object.fill", json!({"swatch": "[None]"}));
         let _ = app.run("object.stroke", json!({"swatch": "[Black]"}));
     }
     let swap = egui::Rect::from_min_size(egui::pos2(x0 + 19.0, row.min.y), vec2(11.0, 11.0));
     icons::paint(ui.painter(), swap, "swap", t.icon);
-    if ui.interact(swap, ui.id().with("proxy_swap_btn"), Sense::click()).on_hover_text("Swap Fill and Stroke (Shift+X)").clicked() {
+    if ui
+        .interact(swap, ui.id().with("proxy_swap_btn"), Sense::click())
+        .on_hover_ui(|ui| {
+            crate::rtl::label(ui, crate::i18n::tr(&app.ui.language, "Swap Fill and Stroke (Shift+X)"));
+        })
+        .clicked()
+    {
         let _ = app.run("object.fill", json!({"swatch": stroke_sw}));
         let _ = app.run("object.stroke", json!({"swatch": fill_sw}));
     }
@@ -228,8 +240,12 @@ fn fill_stroke_proxy(app: &mut DesignApp, ui: &mut egui::Ui, width: f32) {
         paint_stroke(p);
         paint_fill(p);
     }
-    let fresp = ui.interact(fill_r, ui.id().with("proxy_fill"), Sense::click()).on_hover_text("Fill (X)");
-    let sresp = ui.interact(stroke_r.translate(vec2(0.0, 0.0)), ui.id().with("proxy_stroke"), Sense::click()).on_hover_text("Stroke (X)");
+    let fresp = ui.interact(fill_r, ui.id().with("proxy_fill"), Sense::click()).on_hover_ui(|ui| {
+        crate::rtl::label(ui, crate::i18n::tr(&app.ui.language, "Fill (X)"));
+    });
+    let sresp = ui.interact(stroke_r.translate(vec2(0.0, 0.0)), ui.id().with("proxy_stroke"), Sense::click()).on_hover_ui(|ui| {
+        crate::rtl::label(ui, crate::i18n::tr(&app.ui.language, "Stroke (X)"));
+    });
     if fresp.clicked() || sresp.clicked() {
         let front =
             if stroke_front { !fresp.clicked() } else { sresp.clicked() && !fill_r.contains(sresp.interact_pointer_pos().unwrap_or_default()) };
@@ -258,7 +274,9 @@ fn fill_stroke_proxy(app: &mut DesignApp, ui: &mut egui::Ui, width: f32) {
     // Apply None well (flyout: Apply Color / Gradient / None).
     let (row, _) = ui.allocate_exact_size(vec2(width, 21.0), Sense::hover());
     let well = egui::Rect::from_center_size(egui::pos2(row.min.x + width / 2.0, row.center().y), vec2(28.0, 21.0));
-    let resp = ui.interact(well, ui.id().with("proxy_apply"), Sense::click()).on_hover_text("Apply None (/)");
+    let resp = ui.interact(well, ui.id().with("proxy_apply"), Sense::click()).on_hover_ui(|ui| {
+        crate::rtl::label(ui, crate::i18n::tr(&app.ui.language, "Apply None (/)"));
+    });
     ui.painter().rect(well, 2.0, t.well, Stroke::new(1.0, t.well_rim), StrokeKind::Outside);
     let chip = egui::Rect::from_center_size(well.center(), vec2(14.0, 14.0));
     crate::widgets::paint_chip(ui.painter(), chip, None, None);

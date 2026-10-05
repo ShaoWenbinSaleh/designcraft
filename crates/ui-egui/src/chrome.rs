@@ -61,12 +61,12 @@ pub fn app_bar(app: &mut DesignApp, ui: &mut egui::Ui) {
                             let _ = app.run("window.resetWorkspace", json!({}));
                             ui.close();
                         }
-                        if ui.button("New Workspace…").clicked() {
+                        if ui.button(crate::rtl::widget(ui, crate::i18n::tr(&app.ui.language, "New Workspace…"))).clicked() {
                             let _ = app.run("window.newWorkspace", json!({}));
                             ui.close();
                         }
                         if !customs.is_empty() {
-                            ui.menu_button("Delete Workspace", |ui| {
+                            ui.menu_button(crate::rtl::widget(ui, crate::i18n::tr(&app.ui.language, "Delete Workspace")), |ui| {
                                 for w in &customs {
                                     if ui.button(w).clicked() {
                                         let _ = app.run("window.deleteWorkspace", json!({"name": w}));
@@ -90,11 +90,11 @@ pub fn app_bar(app: &mut DesignApp, ui: &mut egui::Ui) {
             });
             // Centred title.
             let title = match app.session.active() {
-                Some(d) => format!("DesignCraft — {}", d.title()),
+                Some(d) => format!("DesignCraft — {}", crate::rtl::isolate(&d.title())),
                 None => "DesignCraft".to_string(),
             };
             // Centred between the menus and the right-hand controls; left out when it won't fit.
-            let galley = ui.painter().layout_no_wrap(title, egui::FontId::proportional(11.5), t.text);
+            let galley = crate::rtl::plain(ui.ctx(), &title, egui::FontId::proportional(11.5), t.text);
             let w = galley.size().x;
             let cx = full.center().x;
             if cx - w / 2.0 > menus_end + 12.0 && cx + w / 2.0 < tools_start - 12.0 {
@@ -209,15 +209,33 @@ fn control_object(app: &mut DesignApp, ui: &mut egui::Ui) {
             if icons::button(ui, "tool-rotate", 20.0, false, "Rotate 90° Counterclockwise").clicked() {
                 let _ = app.run("transform.rotate", json!({"angle": 90}));
             }
-            if ui.small_button("⇋").on_hover_text("Flip Horizontal").clicked() {
+            if ui
+                .small_button("⇋")
+                .on_hover_ui(|ui| {
+                    crate::rtl::label(ui, crate::i18n::tr(&app.ui.language, "Flip Horizontal"));
+                })
+                .clicked()
+            {
                 let _ = app.run("transform.flip", json!({"axis": "horizontal"}));
             }
         });
         ui.horizontal(|ui| {
-            if ui.small_button("↻").on_hover_text("Rotate 90° Clockwise").clicked() {
+            if ui
+                .small_button("↻")
+                .on_hover_ui(|ui| {
+                    crate::rtl::label(ui, crate::i18n::tr(&app.ui.language, "Rotate 90° Clockwise"));
+                })
+                .clicked()
+            {
                 let _ = app.run("transform.rotate", json!({"angle": -90}));
             }
-            if ui.small_button("⇵").on_hover_text("Flip Vertical").clicked() {
+            if ui
+                .small_button("⇵")
+                .on_hover_ui(|ui| {
+                    crate::rtl::label(ui, crate::i18n::tr(&app.ui.language, "Flip Vertical"));
+                })
+                .clicked()
+            {
                 let _ = app.run("transform.flip", json!({"axis": "vertical"}));
             }
         });
@@ -429,8 +447,8 @@ pub fn doc_tabs(app: &mut DesignApp, ui: &mut egui::Ui) {
         let is_active = Some(i) == active;
         // `*` = unsaved; the view-mode suffix only in Preview (InDesign shows its GPU mode there).
         let suffix = if is_active && app.ui.screen_mode == crate::ScreenMode::Preview { " [Preview]" } else { "" };
-        let label = format!("{}{} @ {:.0}%{suffix}", if *dirty { "*" } else { "" }, title, zoom * 100.0);
-        let galley = ui.painter().layout_no_wrap(label, semibold(11.5), if is_active { t.text_strong } else { t.text_dim });
+        let label = format!("{}{} @ {:.0}%{suffix}", if *dirty { "*" } else { "" }, crate::rtl::isolate(title), zoom * 100.0);
+        let galley = crate::rtl::plain(ui.ctx(), &label, semibold(11.5), if is_active { t.text_strong } else { t.text_dim });
         let w = (galley.size().x + 44.0).max(if is_active { 210.0 } else { 150.0 });
         let r = egui::Rect::from_min_size(egui::pos2(x, bar.min.y), vec2(w, 28.0));
         let resp = ui.interact(r, ui.id().with(("doctab", i)), Sense::click());
@@ -514,7 +532,7 @@ pub fn status_bar(app: &mut DesignApp, ui: &mut egui::Ui) {
                     crate::canvas::go_to_page(app, n - 1);
                 }
                 ui.add_space(12.0);
-                ui.label(egui::RichText::new("[Basic] (working) ▾").font(small.clone()));
+                crate::rtl::label(ui, egui::RichText::new(crate::i18n::tr(&app.ui.language, "[Basic] (working) ▾")).font(small.clone()));
                 ui.add_space(8.0);
                 // Preflight: overset text is an error.
                 let errors = panels::preflight_errors(app);
@@ -544,59 +562,94 @@ pub fn start_screen(app: &mut DesignApp, ui: &mut egui::Ui) {
     let t = Tokens::get(ui.ctx());
     let r = ui.available_rect_before_wrap();
     ui.painter().rect_filled(r, 0.0, t.panel_darker);
-    ui.scope_builder(egui::UiBuilder::new().max_rect(r.shrink(48.0)), |ui| {
-        ui.label(egui::RichText::new("Welcome to DesignCraft").font(semibold(28.0)).color(t.text_strong));
-        ui.label(egui::RichText::new("Page layout for print and screen — fast, open and scriptable.").size(15.0).color(t.text_dim));
-        ui.add_space(24.0);
-        ui.horizontal(|ui| {
-            if ui
-                .add(
-                    egui::Button::new(egui::RichText::new("  New file  ").size(14.0).color(Color32::WHITE))
+    ui.scope_builder(
+        egui::UiBuilder::new().max_rect(r.shrink(48.0)).layout(egui::Layout::top_down(if crate::i18n::is_rtl(&app.ui.language) {
+            egui::Align::Max
+        } else {
+            egui::Align::Min
+        })),
+        |ui| {
+            ui.label(crate::rtl::widget(
+                ui,
+                egui::RichText::new(crate::i18n::tr(&app.ui.language, "Welcome to DesignCraft")).font(semibold(28.0)).color(t.text_strong),
+            ));
+            ui.label(crate::rtl::widget(
+                ui,
+                egui::RichText::new(crate::i18n::tr(&app.ui.language, "Page layout for print and screen — fast, open and scriptable."))
+                    .size(15.0)
+                    .color(t.text_dim),
+            ));
+            ui.add_space(24.0);
+            ui.horizontal(|ui| {
+                if ui
+                    .add(
+                        egui::Button::new(crate::rtl::widget(
+                            ui,
+                            egui::RichText::new(crate::i18n::tr(&app.ui.language, "  New file  ")).size(14.0).color(Color32::WHITE),
+                        ))
                         .fill(t.accent_strong)
                         .corner_radius(16.0)
                         .min_size(vec2(0.0, 32.0)),
-                )
-                .clicked()
-            {
-                let _ = app.run("app.newDocumentDialog", json!({}));
-            }
-            if ui.add(egui::Button::new(egui::RichText::new("  Open  ").size(14.0)).corner_radius(16.0).min_size(vec2(0.0, 32.0))).clicked() {
-                let _ = app.run("app.openDialog", json!({}));
-            }
-            if ui
-                .add(egui::Button::new(egui::RichText::new("  Open sample magazine  ").size(14.0)).corner_radius(16.0).min_size(vec2(0.0, 32.0)))
-                .clicked()
-            {
-                let _ = app.run("file.newSample", json!({}));
-            }
-        });
-        ui.add_space(20.0);
-        community_card(app, ui);
-        ui.add_space(24.0);
-        ui.label(egui::RichText::new("Start a new document").font(semibold(15.0)).color(t.text_strong));
-        ui.add_space(8.0);
-        ui.horizontal_wrapped(|ui| {
-            for p in designcraft_doc::build::PRESETS.iter().take(10) {
-                let (cr, resp) = ui.allocate_exact_size(vec2(120.0, 150.0), Sense::click());
-                let hov = resp.hovered();
-                ui.painter().rect_filled(cr, 6.0, if hov { t.hover } else { t.panel });
-                let k = (80.0 / p.width.max(p.height)) as f32;
-                let pr = egui::Rect::from_center_size(cr.center() - vec2(0.0, 14.0), vec2(p.width as f32 * k, p.height as f32 * k));
-                ui.painter().rect_filled(pr, 0.0, Color32::from_gray(245));
-                ui.painter().text(egui::pos2(cr.center().x, cr.max.y - 26.0), egui::Align2::CENTER_CENTER, p.name, semibold(12.0), t.text_strong);
-                ui.painter().text(
-                    egui::pos2(cr.center().x, cr.max.y - 11.0),
-                    egui::Align2::CENTER_CENTER,
-                    format!("{} × {}", designcraft_geom::format_measure(p.width, p.units), designcraft_geom::format_measure(p.height, p.units)),
-                    egui::FontId::proportional(10.0),
-                    t.text_dim,
-                );
-                if resp.clicked() {
-                    let _ = app.run("file.new", json!({"preset": p.name}));
+                    )
+                    .clicked()
+                {
+                    let _ = app.run("app.newDocumentDialog", json!({}));
                 }
-            }
-        });
-    });
+                if ui
+                    .add(
+                        egui::Button::new(crate::rtl::widget(ui, egui::RichText::new(crate::i18n::tr(&app.ui.language, "  Open  ")).size(14.0)))
+                            .corner_radius(16.0)
+                            .min_size(vec2(0.0, 32.0)),
+                    )
+                    .clicked()
+                {
+                    let _ = app.run("app.openDialog", json!({}));
+                }
+                if ui
+                    .add(
+                        egui::Button::new(crate::rtl::widget(
+                            ui,
+                            egui::RichText::new(crate::i18n::tr(&app.ui.language, "  Open sample magazine  ")).size(14.0),
+                        ))
+                        .corner_radius(16.0)
+                        .min_size(vec2(0.0, 32.0)),
+                    )
+                    .clicked()
+                {
+                    let _ = app.run("file.newSample", json!({}));
+                }
+            });
+            ui.add_space(20.0);
+            community_card(app, ui);
+            ui.add_space(24.0);
+            ui.label(crate::rtl::widget(
+                ui,
+                egui::RichText::new(crate::i18n::tr(&app.ui.language, "Start a new document")).font(semibold(15.0)).color(t.text_strong),
+            ));
+            ui.add_space(8.0);
+            ui.horizontal_wrapped(|ui| {
+                for p in designcraft_doc::build::PRESETS.iter().take(10) {
+                    let (cr, resp) = ui.allocate_exact_size(vec2(120.0, 150.0), Sense::click());
+                    let hov = resp.hovered();
+                    ui.painter().rect_filled(cr, 6.0, if hov { t.hover } else { t.panel });
+                    let k = (80.0 / p.width.max(p.height)) as f32;
+                    let pr = egui::Rect::from_center_size(cr.center() - vec2(0.0, 14.0), vec2(p.width as f32 * k, p.height as f32 * k));
+                    ui.painter().rect_filled(pr, 0.0, Color32::from_gray(245));
+                    ui.painter().text(egui::pos2(cr.center().x, cr.max.y - 26.0), egui::Align2::CENTER_CENTER, p.name, semibold(12.0), t.text_strong);
+                    ui.painter().text(
+                        egui::pos2(cr.center().x, cr.max.y - 11.0),
+                        egui::Align2::CENTER_CENTER,
+                        format!("{} × {}", designcraft_geom::format_measure(p.width, p.units), designcraft_geom::format_measure(p.height, p.units)),
+                        egui::FontId::proportional(10.0),
+                        t.text_dim,
+                    );
+                    if resp.clicked() {
+                        let _ = app.run("file.new", json!({"preset": p.name}));
+                    }
+                }
+            });
+        },
+    );
     let _ = Content::Unassigned;
 }
 
@@ -610,8 +663,16 @@ fn community_card(app: &mut DesignApp, ui: &mut egui::Ui) {
             crate::about::paint_mark(ui, r, crate::about::BRAND);
             ui.add_space(8.0);
             ui.vertical(|ui| {
-                ui.label(egui::RichText::new("Join the ArtCraft community").font(semibold(14.0)).color(t.text_strong));
-                ui.label(egui::RichText::new("Get help, share your layouts and shape what we build next.").size(12.0).color(t.text_dim));
+                ui.label(crate::rtl::widget(
+                    ui,
+                    egui::RichText::new(crate::i18n::tr(&app.ui.language, "Join the ArtCraft community")).font(semibold(14.0)).color(t.text_strong),
+                ));
+                ui.label(crate::rtl::widget(
+                    ui,
+                    egui::RichText::new(crate::i18n::tr(&app.ui.language, "Get help, share your layouts and shape what we build next."))
+                        .size(12.0)
+                        .color(t.text_dim),
+                ));
                 ui.add_space(4.0);
                 ui.horizontal(|ui| {
                     for (text, id) in [("DesignCraft page", "help.appPage"), ("GitHub", "help.github"), ("getartcraft.com", "help.website")] {
@@ -628,7 +689,7 @@ fn community_card(app: &mut DesignApp, ui: &mut egui::Ui) {
                 });
             });
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if crate::about::discord_button(ui, "Join our Discord", vec2(190.0, 38.0)) {
+                if crate::about::discord_button(ui, crate::i18n::tr(&app.ui.language, "Join our Discord"), vec2(190.0, 38.0)) {
                     let _ = app.run("help.discord", json!({}));
                 }
             });

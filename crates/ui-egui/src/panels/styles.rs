@@ -47,7 +47,10 @@ fn list(app: &mut DesignApp, ui: &mut egui::Ui, para: bool) {
     }
     ui.add_space(6.0);
     ui.horizontal(|ui| {
-        ui.label(egui::RichText::new("⌥-click clears overrides").size(10.5).color(t.text_disabled));
+        ui.label(crate::rtl::widget(
+            ui,
+            egui::RichText::new(crate::i18n::tr(&app.ui.language, "⌥-click clears overrides")).size(10.5).color(t.text_disabled),
+        ));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if icons::button(ui, "plus", 20.0, false, "Create New Style from Selection").clicked() {
                 let cmd = if para { "style.paragraph.create" } else { "style.character.create" };
@@ -91,13 +94,13 @@ fn style_row(app: &mut DesignApp, ui: &mut egui::Ui, para: bool, n: &str, curren
             let _ = app.run(cmd, json!({"name": n}));
             ui.close();
         }
-        if current == Some(n) && ui.button("Break Link to Style").clicked() {
+        if current == Some(n) && ui.button(crate::rtl::widget(ui, crate::i18n::tr(&app.ui.language, "Break Link to Style"))).clicked() {
             let _ = app.run("style.breakLink", json!({"kind": kind}));
             ui.close();
         }
         if !n.starts_with('[') {
-            ui.menu_button("Move to Group", |ui| {
-                if n.contains('/') && ui.button("[No Group]").clicked() {
+            ui.menu_button(crate::rtl::widget(ui, crate::i18n::tr(&app.ui.language, "Move to Group")), |ui| {
+                if n.contains('/') && ui.button(crate::rtl::widget(ui, crate::i18n::tr(&app.ui.language, "[No Group]"))).clicked() {
                     let _ = app.run("style.group", json!({"kind": kind, "names": [n], "group": ""}));
                     ui.close();
                 }

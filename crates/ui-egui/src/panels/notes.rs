@@ -23,7 +23,10 @@ pub fn show(app: &mut DesignApp, ui: &mut egui::Ui) {
     ui.data_mut(|d| d.insert_temp(id, draft));
     ui.separator();
     if notes.is_empty() {
-        ui.label(egui::RichText::new("No notes in this document.").size(11.0).color(t.text_dim));
+        ui.label(crate::rtl::widget(
+            ui,
+            egui::RichText::new(crate::i18n::tr(&app.ui.language, "No notes in this document.")).size(11.0).color(t.text_dim),
+        ));
     }
     for n in notes {
         let (story, nid, at) = (n["story"].clone(), n["id"].clone(), n["at"].as_u64().unwrap_or(0));

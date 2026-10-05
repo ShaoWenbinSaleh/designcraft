@@ -12,9 +12,15 @@ pub fn show(app: &mut DesignApp, ui: &mut egui::Ui) {
     let conveyor = app.session.conveyor.iter().map(|c| c.0.clone()).collect::<Vec<_>>();
     ui.label(egui::RichText::new(format!("Conveyor ({})", conveyor.len())).strong());
     if conveyor.is_empty() {
-        ui.label(
-            egui::RichText::new("Collect objects with the Content Collector (B); place them with the Content Placer.").size(10.5).color(t.text_dim),
-        );
+        ui.label(crate::rtl::widget(
+            ui,
+            egui::RichText::new(crate::i18n::tr(
+                &app.ui.language,
+                "Collect objects with the Content Collector (B); place them with the Content Placer.",
+            ))
+            .size(10.5)
+            .color(t.text_dim),
+        ));
     } else {
         ui.label(egui::RichText::new(conveyor.join(", ")).size(10.5));
         if ui.small_button("Clear").clicked() {
@@ -23,11 +29,11 @@ pub fn show(app: &mut DesignApp, ui: &mut egui::Ui) {
     }
     ui.separator();
     ui.horizontal(|ui| {
-        if ui.button("New Library…").clicked() {
+        if ui.button(crate::rtl::widget(ui, crate::i18n::tr(&app.ui.language, "New Library…"))).clicked() {
             let path = app.services.pick_save.as_mut().and_then(|f| f("Library.dclib"));
             let _ = app.run("library.new", json!({"path": path}));
         }
-        if ui.button("Open…").clicked()
+        if ui.button(crate::rtl::widget(ui, crate::i18n::tr(&app.ui.language, "Open…"))).clicked()
             && let Some(path) = app.services.pick_open.as_mut().and_then(|f| f("library"))
             && let Err(e) = app.run("library.open", json!({"path": path}))
         {
@@ -35,7 +41,7 @@ pub fn show(app: &mut DesignApp, ui: &mut egui::Ui) {
         }
     });
     let Ok(items) = app.session.execute("library.list", &json!({})) else {
-        ui.label(egui::RichText::new("No library open.").size(11.0).color(t.text_dim));
+        crate::rtl::label(ui, egui::RichText::new(crate::i18n::tr(&app.ui.language, "No library open.")).size(11.0).color(t.text_dim));
         return;
     };
     let has_sel = app.session.active().is_some_and(|d| !d.selection.items.is_empty());
@@ -47,7 +53,12 @@ pub fn show(app: &mut DesignApp, ui: &mut egui::Ui) {
     ui.separator();
     let items = items.as_array().cloned().unwrap_or_default();
     if items.is_empty() {
-        ui.label(egui::RichText::new("The library is empty. Select objects and Add Selection.").size(11.0).color(t.text_dim));
+        ui.label(crate::rtl::widget(
+            ui,
+            egui::RichText::new(crate::i18n::tr(&app.ui.language, "The library is empty. Select objects and Add Selection."))
+                .size(11.0)
+                .color(t.text_dim),
+        ));
     }
     for it in items {
         let i = it["index"].clone();
@@ -72,13 +83,13 @@ pub fn show(app: &mut DesignApp, ui: &mut egui::Ui) {
 pub fn book(app: &mut DesignApp, ui: &mut egui::Ui) {
     let t = Tokens::get(ui.ctx());
     ui.horizontal(|ui| {
-        if ui.button("New Book…").clicked()
+        if ui.button(crate::rtl::widget(ui, crate::i18n::tr(&app.ui.language, "New Book…"))).clicked()
             && let Some(path) = app.services.pick_save.as_mut().and_then(|f| f("Book.dcbook"))
             && let Err(e) = app.run("book.new", json!({"path": path}))
         {
             app.status(format!("Book: {e}"));
         }
-        if ui.button("Open…").clicked()
+        if ui.button(crate::rtl::widget(ui, crate::i18n::tr(&app.ui.language, "Open…"))).clicked()
             && let Some(path) = app.services.pick_open.as_mut().and_then(|f| f("book"))
             && let Err(e) = app.run("book.open", json!({"path": path}))
         {
@@ -86,7 +97,7 @@ pub fn book(app: &mut DesignApp, ui: &mut egui::Ui) {
         }
     });
     let Ok(info) = app.session.execute("book.list", &json!({})) else {
-        ui.label(egui::RichText::new("No book open.").size(11.0).color(t.text_dim));
+        crate::rtl::label(ui, egui::RichText::new(crate::i18n::tr(&app.ui.language, "No book open.")).size(11.0).color(t.text_dim));
         return;
     };
     let source = info["styleSource"].as_u64().unwrap_or(0) as usize;
@@ -112,19 +123,19 @@ pub fn book(app: &mut DesignApp, ui: &mut egui::Ui) {
     }
     ui.separator();
     ui.horizontal_wrapped(|ui| {
-        if ui.button("Add Document…").clicked()
+        if ui.button(crate::rtl::widget(ui, crate::i18n::tr(&app.ui.language, "Add Document…"))).clicked()
             && let Some(path) = app.services.pick_open.as_mut().and_then(|f| f("open"))
             && let Err(e) = app.run("book.add", json!({"path": path}))
         {
             app.status(format!("Book: {e}"));
         }
-        if ui.button("Update Numbering").clicked() {
+        if ui.button(crate::rtl::widget(ui, crate::i18n::tr(&app.ui.language, "Update Numbering"))).clicked() {
             let _ = app.run("book.paginate", json!({}));
         }
-        if ui.button("Synchronize").clicked() {
+        if ui.button(crate::rtl::widget(ui, crate::i18n::tr(&app.ui.language, "Synchronize"))).clicked() {
             let _ = app.run("book.syncStyles", json!({}));
         }
-        if ui.button("Export PDF…").clicked()
+        if ui.button(crate::rtl::widget(ui, crate::i18n::tr(&app.ui.language, "Export PDF…"))).clicked()
             && let Some(path) = app.services.pick_save.as_mut().and_then(|f| f("Book.pdf"))
             && let Err(e) = app.run("book.exportPdf", json!({"path": path}))
         {
@@ -139,7 +150,10 @@ pub fn scripts(app: &mut DesignApp, ui: &mut egui::Ui) {
     let sel_id = egui::Id::new("scripts_sel");
     let mut sel: usize = ui.data(|d| d.get_temp(sel_id)).unwrap_or(0);
     if app.ui.scripts.is_empty() {
-        ui.label(egui::RichText::new("No scripts. Add one below.").size(11.0).color(t.text_dim));
+        ui.label(crate::rtl::widget(
+            ui,
+            egui::RichText::new(crate::i18n::tr(&app.ui.language, "No scripts. Add one below.")).size(11.0).color(t.text_dim),
+        ));
     }
     let mut run: Option<usize> = None;
     for (i, (name, _)) in app.ui.scripts.iter().enumerate() {
@@ -156,11 +170,11 @@ pub fn scripts(app: &mut DesignApp, ui: &mut egui::Ui) {
         if ui.add_enabled(!app.ui.scripts.is_empty(), egui::Button::new("Run")).clicked() {
             run = Some(sel);
         }
-        if ui.button("New").clicked() {
+        if ui.button(crate::rtl::widget(ui, crate::i18n::tr(&app.ui.language, "New"))).clicked() {
             app.ui.scripts.push((format!("Script {}", app.ui.scripts.len() + 1), "# command.id {json} per line\n".into()));
             sel = app.ui.scripts.len() - 1;
         }
-        if ui.button("Load…").clicked()
+        if ui.button(crate::rtl::widget(ui, crate::i18n::tr(&app.ui.language, "Load…"))).clicked()
             && let Some(path) = app.services.pick_open.as_mut().and_then(|f| f("script"))
         {
             #[cfg(not(target_arch = "wasm32"))]

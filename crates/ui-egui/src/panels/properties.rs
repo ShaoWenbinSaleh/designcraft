@@ -49,20 +49,20 @@ fn set_temp_bool(ui: &Ui, key: &str, v: bool) {
 fn selection_title(app: &DesignApp, info: &Option<SelInfo>) -> String {
     let Some(st) = app.session.active() else { return String::new() };
     if st.selection.text.is_some() {
-        return "Characters".into();
+        return crate::i18n::tr(&app.ui.language, "Characters").into();
     }
     match info {
-        None => "No Selection".into(),
-        Some(i) if i.count > 1 => "Multiple Objects".into(),
+        None => crate::i18n::tr(&app.ui.language, "No Selection").into(),
+        Some(i) if i.count > 1 => crate::i18n::tr(&app.ui.language, "Multiple Objects").into(),
         Some(i) => match i.kind {
-            "<text frame>" => "Text Frame".into(),
-            "<group>" => "Group".into(),
-            "<image>" => "Image".into(),
-            "<rectangle>" => "Rectangle".into(),
-            "<ellipse>" => "Ellipse".into(),
-            "<polygon>" => "Polygon".into(),
-            "<line>" => "Line".into(),
-            _ => "Path".into(),
+            "<text frame>" => crate::i18n::tr(&app.ui.language, "Text Frame").into(),
+            "<group>" => crate::i18n::tr(&app.ui.language, "Group").into(),
+            "<image>" => crate::i18n::tr(&app.ui.language, "Image").into(),
+            "<rectangle>" => crate::i18n::tr(&app.ui.language, "Rectangle").into(),
+            "<ellipse>" => crate::i18n::tr(&app.ui.language, "Ellipse").into(),
+            "<polygon>" => crate::i18n::tr(&app.ui.language, "Polygon").into(),
+            "<line>" => crate::i18n::tr(&app.ui.language, "Line").into(),
+            _ => crate::i18n::tr(&app.ui.language, "Path").into(),
         },
     }
 }
@@ -70,7 +70,7 @@ fn selection_title(app: &DesignApp, info: &Option<SelInfo>) -> String {
 pub fn show(app: &mut DesignApp, ui: &mut egui::Ui) {
     let t = Tokens::get(ui.ctx());
     if app.session.active().is_none() {
-        ui.label(egui::RichText::new("No document open").color(t.text_dim));
+        crate::rtl::label(ui, egui::RichText::new(crate::i18n::tr(&app.ui.language, "No document open")).color(t.text_dim));
         return;
     }
     ui.spacing_mut().item_spacing = vec2(6.0, 5.0);
@@ -80,19 +80,19 @@ pub fn show(app: &mut DesignApp, ui: &mut egui::Ui) {
     if has_text {
         text_style_section(app, ui);
         divider(ui);
-        section(ui, "Appearance", true);
+        section(ui, crate::i18n::tr(&app.ui.language, "Appearance"), true);
         text_appearance_section(app, ui);
         divider(ui);
-        section(ui, "Character", true);
+        section(ui, crate::i18n::tr(&app.ui.language, "Character"), true);
         character_section(app, ui);
         divider(ui);
-        section(ui, "Paragraph", true);
+        section(ui, crate::i18n::tr(&app.ui.language, "Paragraph"), true);
         paragraph_section(app, ui);
         divider(ui);
-        section(ui, "Bullets and Numbering", true);
+        section(ui, crate::i18n::tr(&app.ui.language, "Bullets and Numbering"), true);
         bullets_section(app, ui);
         divider(ui);
-        section(ui, "Quick Actions", true);
+        section(ui, crate::i18n::tr(&app.ui.language, "Quick Actions"), true);
         quick_actions_text(app, ui);
         return;
     }
@@ -100,34 +100,34 @@ pub fn show(app: &mut DesignApp, ui: &mut egui::Ui) {
         document_sections(app, ui);
         return;
     };
-    section(ui, "Transform", true);
+    section(ui, crate::i18n::tr(&app.ui.language, "Transform"), true);
     transform_section(app, ui, &i);
     divider(ui);
     if i.is_text && i.count == 1 {
         text_style_section(app, ui);
         divider(ui);
     }
-    section(ui, "Appearance", true);
+    section(ui, crate::i18n::tr(&app.ui.language, "Appearance"), true);
     appearance_section(app, ui, &i);
     divider(ui);
     if i.is_text && i.count == 1 {
-        section(ui, "Character", true);
+        section(ui, crate::i18n::tr(&app.ui.language, "Character"), true);
         character_section(app, ui);
         divider(ui);
-        section(ui, "Paragraph", true);
+        section(ui, crate::i18n::tr(&app.ui.language, "Paragraph"), true);
         paragraph_section(app, ui);
         divider(ui);
     }
-    section(ui, "Align", true);
+    section(ui, crate::i18n::tr(&app.ui.language, "Align"), true);
     align_row(app, ui);
     divider(ui);
     if i.is_text && i.count == 1 {
-        section(ui, "Text Frame", true);
+        section(ui, crate::i18n::tr(&app.ui.language, "Text Frame"), true);
         text_frame_section(app, ui);
         divider(ui);
     } else {
         if i.is_graphic {
-            section(ui, "Frame Fitting", true);
+            section(ui, crate::i18n::tr(&app.ui.language, "Frame Fitting"), true);
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 8.0;
                 for (icon, mode, tip) in [
@@ -144,11 +144,11 @@ pub fn show(app: &mut DesignApp, ui: &mut egui::Ui) {
             });
             divider(ui);
         }
-        section(ui, "Text Wrap", true);
+        section(ui, crate::i18n::tr(&app.ui.language, "Text Wrap"), true);
         wrap_section(app, ui, &i);
         divider(ui);
     }
-    section(ui, "Quick Actions", true);
+    section(ui, crate::i18n::tr(&app.ui.language, "Quick Actions"), true);
     quick_actions_object(app, ui, &i);
 }
 
@@ -177,7 +177,7 @@ fn document_sections(app: &mut DesignApp, ui: &mut Ui) {
     let Some(st) = app.session.active() else { return };
     let d = st.doc.clone();
     let (pw, ph) = (d.settings.page_width, d.settings.page_height);
-    section(ui, "Document", true);
+    section(ui, crate::i18n::tr(&app.ui.language, "Document"), true);
     // Preset dropdown + orientation.
     let b = block(ui, FIELD_H);
     let mut preset = None;
@@ -236,12 +236,14 @@ fn document_sections(app: &mut DesignApp, ui: &mut Ui) {
         }
     }
     let mut facing = d.settings.facing_pages;
-    let changed = place(ui, sub(b, 126.0, 26.0, 100.0, FIELD_H), |ui| widgets::checkbox(ui, &mut facing, "Facing Pages").changed());
+    let changed = place(ui, sub(b, 126.0, 26.0, 100.0, FIELD_H), |ui| {
+        widgets::checkbox(ui, &mut facing, crate::i18n::tr(&app.ui.language, "Facing Pages")).changed()
+    });
     if changed {
         let _ = app.run("layout.documentSetup", json!({"facingPages": facing}));
     }
     // Margins.
-    section(ui, "Margins", true);
+    section(ui, crate::i18n::tr(&app.ui.language, "Margins"), true);
     let cur = crate::canvas::current_page(app).unwrap_or(0);
     if let Some(p) = d.page(cur).cloned() {
         let linked = temp_bool(ui, "margins_linked", true);
@@ -289,12 +291,12 @@ fn document_sections(app: &mut DesignApp, ui: &mut Ui) {
     }
     ui.add_space(6.0);
     let fw = full_width(ui);
-    if outline_button(ui, "Adjust Layout", fw).clicked() {
+    if outline_button(ui, crate::i18n::tr(&app.ui.language, "Adjust Layout"), fw).clicked() {
         crate::dialogs::open_document_setup(app);
     }
     divider(ui);
     // Page.
-    section(ui, "Page", true);
+    section(ui, crate::i18n::tr(&app.ui.language, "Page"), true);
     let b = block(ui, FIELD_H);
     let names: Vec<String> = (0..d.page_count()).map(|i| app.session.page_label(i)).collect();
     let picked = place(ui, sub(b, 0.0, 0.0, 93.0, FIELD_H), |ui| {
@@ -316,13 +318,13 @@ fn document_sections(app: &mut DesignApp, ui: &mut Ui) {
         let _ = app.run("layout.pages.delete", json!({"pages": [cur]}));
     }
     ui.add_space(3.0);
-    if outline_button(ui, "Edit Page", fw).clicked() {
+    if outline_button(ui, crate::i18n::tr(&app.ui.language, "Edit Page"), fw).clicked() {
         crate::dialogs::open_document_setup(app);
     }
     divider(ui);
     // Rulers & Grids / Guides: icon toggle rows.
     let (mut rulers, mut bl, mut dg) = (app.ui.rulers, app.ui.baseline_grid, app.ui.document_grid);
-    section_row(ui, "Rulers & Grids", |ui| {
+    section_row(ui, crate::i18n::tr(&app.ui.language, "Rulers & Grids"), |ui| {
         ui.spacing_mut().item_spacing.x = 14.0;
         if icon_toggle(ui, "grid-document", dg, "Show Document Grid").clicked() {
             dg = !dg;
@@ -343,7 +345,7 @@ fn document_sections(app: &mut DesignApp, ui: &mut Ui) {
     app.ui.document_grid = dg;
     rule(ui);
     let (mut guides, mut locked, mut smart) = (app.ui.guides, app.ui.guides_locked, app.ui.smart_guides);
-    section_row(ui, "Guides", |ui| {
+    section_row(ui, crate::i18n::tr(&app.ui.language, "Guides"), |ui| {
         ui.spacing_mut().item_spacing.x = 14.0;
         if icon_toggle(ui, "guides-smart", smart, "Smart Guides").clicked() {
             smart = !smart;
@@ -363,8 +365,8 @@ fn document_sections(app: &mut DesignApp, ui: &mut Ui) {
     }
     app.ui.guides_locked = locked;
     rule(ui);
-    section(ui, "Quick Actions", true);
-    let (a, b) = button_pair(ui, "Import File", "Insert Page");
+    section(ui, crate::i18n::tr(&app.ui.language, "Quick Actions"), true);
+    let (a, b) = button_pair(ui, crate::i18n::tr(&app.ui.language, "Import File"), crate::i18n::tr(&app.ui.language, "Insert Page"));
     if a {
         let _ = app.run("app.placeDialog", json!({}));
     }
@@ -730,7 +732,7 @@ fn wrap_section(app: &mut DesignApp, ui: &mut Ui, i: &SelInfo) {
         ui.add_space(2.0);
         let mut inv = i.wrap_invert;
         let enabled = i.wrap != "none";
-        let r = ui.add_enabled_ui(enabled, |ui| widgets::checkbox(ui, &mut inv, "Invert")).inner;
+        let r = ui.add_enabled_ui(enabled, |ui| widgets::checkbox(ui, &mut inv, crate::i18n::tr(&app.ui.language, "Invert"))).inner;
         if r.changed() {
             let _ = app.run("object.textWrap", json!({"mode": i.wrap, "invert": inv}));
         }
@@ -785,24 +787,24 @@ fn quick_actions_object(app: &mut DesignApp, ui: &mut Ui, i: &SelInfo) {
     if i.is_text {
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 10.0;
-            let r = outline_button(ui, "Convert Shape", hw);
+            let r = outline_button(ui, crate::i18n::tr(&app.ui.language, "Convert Shape"), hw);
             convert_shape_menu(app, &r);
-            let r = outline_button(ui, "Arrange", hw);
+            let r = outline_button(ui, crate::i18n::tr(&app.ui.language, "Arrange"), hw);
             arrange_menu(app, &r);
         });
         ui.add_space(4.0);
-        if outline_button(ui, "Fill with Placeholder Text", fw).clicked() {
+        if outline_button(ui, crate::i18n::tr(&app.ui.language, "Fill with Placeholder Text"), fw).clicked() {
             let _ = app.run("type.fillWithPlaceholder", json!({}));
         }
         ui.add_space(4.0);
-        if outline_button(ui, "Edit in Story Editor", fw).clicked() {
+        if outline_button(ui, crate::i18n::tr(&app.ui.language, "Edit in Story Editor"), fw).clicked() {
             let _ = app.run("app.storyEditor", json!({}));
         }
         return;
     }
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 10.0;
-        let r = outline_button(ui, "Arrange", hw);
+        let r = outline_button(ui, crate::i18n::tr(&app.ui.language, "Arrange"), hw);
         arrange_menu(app, &r);
         if outline_button(ui, if i.count > 1 { "Group" } else { "Lock" }, hw).clicked() {
             let _ = app.run(if i.count > 1 { "object.group" } else { "object.lock" }, json!({}));
@@ -810,11 +812,11 @@ fn quick_actions_object(app: &mut DesignApp, ui: &mut Ui, i: &SelInfo) {
     });
     ui.add_space(4.0);
     if i.kind == "<group>" {
-        if outline_button(ui, "Ungroup", fw).clicked() {
+        if outline_button(ui, crate::i18n::tr(&app.ui.language, "Ungroup"), fw).clicked() {
             let _ = app.run("object.ungroup", json!({}));
         }
     } else {
-        let r = outline_button(ui, "Convert Shape", fw);
+        let r = outline_button(ui, crate::i18n::tr(&app.ui.language, "Convert Shape"), fw);
         convert_shape_menu(app, &r);
     }
 }
@@ -823,7 +825,7 @@ fn quick_actions_object(app: &mut DesignApp, ui: &mut Ui, i: &SelInfo) {
 
 fn text_style_section(app: &mut DesignApp, ui: &mut Ui) {
     let t = Tokens::get(ui.ctx());
-    section(ui, "Text Style", true);
+    section(ui, crate::i18n::tr(&app.ui.language, "Text Style"), true);
     let Some(a) = text_attrs(app) else { return };
     let tab = app.ui.text_style_tab;
     let fw = full_width(ui);
@@ -1084,7 +1086,7 @@ fn bullets_section(app: &mut DesignApp, ui: &mut Ui) {
         }
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             ui.add_space(8.0);
-            if outline_button(ui, "Options", 66.0).clicked() {
+            if outline_button(ui, crate::i18n::tr(&app.ui.language, "Options"), 66.0).clicked() {
                 app.ui.open_panel = Some("paragraph".into());
             }
         });
@@ -1096,7 +1098,7 @@ fn quick_actions_text(app: &mut DesignApp, ui: &mut Ui) {
     let hw = (fw - 10.0) / 2.0;
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 10.0;
-        let r = outline_button(ui, "Change Case", hw);
+        let r = outline_button(ui, crate::i18n::tr(&app.ui.language, "Change Case"), hw);
         egui::Popup::menu(&r).show(|ui| {
             for (label, v) in [("UPPERCASE", "allCaps"), ("Small Caps", "smallCaps"), ("Normal", "normal")] {
                 if ui.button(label).clicked() {
@@ -1105,12 +1107,12 @@ fn quick_actions_text(app: &mut DesignApp, ui: &mut Ui) {
                 }
             }
         });
-        if outline_button(ui, "Story Editor", hw).clicked() {
+        if outline_button(ui, crate::i18n::tr(&app.ui.language, "Story Editor"), hw).clicked() {
             let _ = app.run("app.storyEditor", json!({}));
         }
     });
     ui.add_space(4.0);
-    if outline_button(ui, "Fill with Placeholder Text", fw).clicked() {
+    if outline_button(ui, crate::i18n::tr(&app.ui.language, "Fill with Placeholder Text"), fw).clicked() {
         let _ = app.run("type.fillWithPlaceholder", json!({}));
     }
 }
@@ -1136,7 +1138,7 @@ fn text_frame_section(app: &mut DesignApp, ui: &mut Ui) {
         let _ = app.run("object.textFrameOptions", json!({"gutter": v}));
     }
     let ow = (b.max.x - 8.0) - (b.min.x + 164.0);
-    if place(ui, sub(b, 164.0, 0.5, ow, 20.0), |ui| outline_button(ui, "Options", ow)).clicked() {
+    if place(ui, sub(b, 164.0, 0.5, ow, 20.0), |ui| outline_button(ui, crate::i18n::tr(&app.ui.language, "Options"), ow)).clicked() {
         app.ui.dialog = Some(crate::dialogs::Dialog::new("textFrameOptions", json!({})));
     }
 }
@@ -1176,7 +1178,7 @@ const LANGUAGES: &[&str] = &[
 
 pub fn character_panel(app: &mut DesignApp, ui: &mut egui::Ui) {
     let Some(a) = text_attrs(app) else {
-        ui.label("Select text or a text frame.");
+        crate::rtl::label(ui, crate::i18n::tr(&app.ui.language, "Select text or a text frame."));
         return;
     };
     let c = a["chars"].clone();
@@ -1317,7 +1319,7 @@ pub fn open_type_menu(app: &mut DesignApp, ui: &mut egui::Ui, features: &[String
         }
     }
     ui.separator();
-    ui.menu_button("Stylistic Sets", |ui| {
+    ui.menu_button(crate::rtl::widget(ui, crate::i18n::tr(&app.ui.language, "Stylistic Sets")), |ui| {
         let mask = otf::stylistic_sets(features);
         for n in 1..=20u32 {
             let mut on = mask & (1 << (n - 1)) != 0;
@@ -1331,7 +1333,7 @@ pub fn open_type_menu(app: &mut DesignApp, ui: &mut egui::Ui, features: &[String
 
 pub fn paragraph_panel(app: &mut DesignApp, ui: &mut egui::Ui) {
     let Some(a) = text_attrs(app) else {
-        ui.label("Select text or a text frame.");
+        crate::rtl::label(ui, crate::i18n::tr(&app.ui.language, "Select text or a text frame."));
         return;
     };
     let u = units(app);
@@ -1388,21 +1390,21 @@ pub fn paragraph_panel(app: &mut DesignApp, ui: &mut egui::Ui) {
     });
     ui.horizontal(|ui| {
         let mut h = p["hyphenate"].as_bool().unwrap_or(true);
-        if ui.checkbox(&mut h, "Hyphenate").changed() {
+        if ui.checkbox(&mut h, crate::rtl::widget(ui, crate::i18n::tr(&app.ui.language, "Hyphenate"))).changed() {
             let _ = app.run("type.para", json!({"attrs": {"hyphenate": h}}));
         }
         let mut grid = p["gridAlign"].as_str() == Some("allLines");
-        if ui.checkbox(&mut grid, "Align to baseline grid").changed() {
+        if ui.checkbox(&mut grid, crate::rtl::widget(ui, crate::i18n::tr(&app.ui.language, "Align to baseline grid"))).changed() {
             let _ = app.run("type.para", json!({"attrs": {"gridAlign": if grid { "allLines" } else { "none" }}}));
         }
     });
     ui.horizontal(|ui| {
         caption(ui, "Composer");
         let single = p["composer"].as_str() == Some("singleLine");
-        if ui.selectable_label(!single, "Paragraph").clicked() {
+        if ui.selectable_label(!single, crate::rtl::widget(ui, crate::i18n::tr(&app.ui.language, "Paragraph"))).clicked() {
             let _ = app.run("type.para", json!({"attrs": {"composer": "paragraph"}}));
         }
-        if ui.selectable_label(single, "Single-line").clicked() {
+        if ui.selectable_label(single, crate::rtl::widget(ui, crate::i18n::tr(&app.ui.language, "Single-line"))).clicked() {
             let _ = app.run("type.para", json!({"attrs": {"composer": "singleLine"}}));
         }
     });
@@ -1456,7 +1458,7 @@ pub fn paragraph_panel(app: &mut DesignApp, ui: &mut egui::Ui) {
 /// Stroke panel: weight, cap, miter limit, join, alignment, type, arrowheads, gap colour.
 pub fn stroke_panel(app: &mut DesignApp, ui: &mut egui::Ui) {
     let Some(i) = sel_info(app) else {
-        ui.label("Select an object.");
+        crate::rtl::label(ui, crate::i18n::tr(&app.ui.language, "Select an object."));
         return;
     };
     let Some(st) = app.session.active().and_then(|d| d.selection.items.first().and_then(|id| d.doc.item(*id)).map(|it| it.stroke.clone())) else {
@@ -1646,12 +1648,12 @@ pub fn pathfinder_panel(app: &mut DesignApp, ui: &mut egui::Ui) {
         }
     });
     ui.add_space(4.0);
-    ui.label(egui::RichText::new("Paths").strong());
+    crate::rtl::label(ui, egui::RichText::new(crate::i18n::tr(&app.ui.language, "Paths")).strong());
     ui.horizontal(|ui| {
-        if ui.button("Make Compound").clicked() {
+        if ui.button(crate::rtl::widget(ui, crate::i18n::tr(&app.ui.language, "Make Compound"))).clicked() {
             let _ = app.run("object.makeCompoundPath", json!({}));
         }
-        if ui.button("Release").clicked() {
+        if ui.button(crate::rtl::widget(ui, crate::i18n::tr(&app.ui.language, "Release"))).clicked() {
             let _ = app.run("object.releaseCompoundPath", json!({}));
         }
     });
@@ -1705,7 +1707,10 @@ pub fn links_panel(app: &mut DesignApp, ui: &mut egui::Ui) {
             ui.horizontal(|ui| {
                 ui.label(format!("Story {} ← story {}", l["story"], l["parent"]));
                 if out {
-                    ui.label(egui::RichText::new("⚠ out of date").color(egui::Color32::from_rgb(230, 160, 40)));
+                    ui.label(crate::rtl::widget(
+                        ui,
+                        egui::RichText::new(crate::i18n::tr(&app.ui.language, "⚠ out of date")).color(egui::Color32::from_rgb(230, 160, 40)),
+                    ));
                     if ui.small_button("Update").clicked() {
                         let _ = app.run("story.updateLink", json!({"story": l["story"]}));
                     }
@@ -1730,15 +1735,15 @@ pub fn links_panel(app: &mut DesignApp, ui: &mut egui::Ui) {
         }
     };
     if rows.is_empty() {
-        ui.label(egui::RichText::new("No placed graphics.").color(t.text_dim));
+        crate::rtl::label(ui, egui::RichText::new(crate::i18n::tr(&app.ui.language, "No placed graphics.")).color(t.text_dim));
         return;
     }
     let sel_key = egui::Id::new("links_panel_sel");
     let mut chosen: Option<u64> = ui.data(|d| d.get_temp(sel_key));
     egui::Grid::new("links_grid").num_columns(3).striped(true).spacing([10.0, 4.0]).show(ui, |ui| {
         ui.label(egui::RichText::new("Name").color(t.text_dim).size(11.0));
-        ui.label(egui::RichText::new("Status").color(t.text_dim).size(11.0));
-        ui.label(egui::RichText::new("Page · PPI").color(t.text_dim).size(11.0));
+        crate::rtl::label(ui, egui::RichText::new(crate::i18n::tr(&app.ui.language, "Status")).color(t.text_dim).size(11.0));
+        crate::rtl::label(ui, egui::RichText::new(crate::i18n::tr(&app.ui.language, "Page · PPI")).color(t.text_dim).size(11.0));
         ui.end_row();
         for r in &rows {
             let aid = r["asset"].as_u64().unwrap_or(0);
@@ -1775,27 +1780,30 @@ pub fn links_panel(app: &mut DesignApp, ui: &mut egui::Ui) {
     ui.add_space(6.0);
     ui.horizontal(|ui| {
         let Some(aid) = chosen else {
-            ui.label(egui::RichText::new("Choose a link.").color(t.text_dim).size(11.0));
+            crate::rtl::label(ui, egui::RichText::new(crate::i18n::tr(&app.ui.language, "Choose a link.")).color(t.text_dim).size(11.0));
             return;
         };
-        if ui.button("Relink…").clicked()
+        if ui.button(crate::rtl::widget(ui, crate::i18n::tr(&app.ui.language, "Relink…"))).clicked()
             && let Some(path) = app.services.pick_open.as_mut().and_then(|pick| pick("relink"))
         {
             let _ = app.run("links.relink", json!({"asset": aid, "path": path}));
         }
-        if ui.button("Go To").clicked() {
+        if ui.button(crate::rtl::widget(ui, crate::i18n::tr(&app.ui.language, "Go To"))).clicked() {
             let _ = app.run("links.goTo", json!({"asset": aid}));
         }
-        if ui.button("Update").clicked() {
+        if ui.button(crate::rtl::widget(ui, crate::i18n::tr(&app.ui.language, "Update"))).clicked() {
             let _ = app.run("links.update", json!({"asset": aid}));
         }
-        if ui.button("Embed").clicked() {
+        if ui.button(crate::rtl::widget(ui, crate::i18n::tr(&app.ui.language, "Embed"))).clicked() {
             let _ = app.run("links.embed", json!({"asset": aid}));
         }
     });
     ui.horizontal(|ui| {
         // Choose any file in the folder: missing links are looked up there by name.
-        if ui.button("Relink to Folder…").on_hover_text("Pick a file in the folder holding the moved graphics").clicked()
+        if ui
+            .button(crate::i18n::tr(&app.ui.language, "Relink to Folder…"))
+            .on_hover_text("Pick a file in the folder holding the moved graphics")
+            .clicked()
             && let Some(path) = app.services.pick_open.as_mut().and_then(|pick| pick("relink"))
             && let Some(dir) = std::path::Path::new(&path).parent()
         {
@@ -1829,7 +1837,7 @@ pub fn info_panel(app: &mut DesignApp, ui: &mut egui::Ui) {
 pub fn effects_panel(app: &mut DesignApp, ui: &mut egui::Ui) {
     let Some(st) = app.session.active() else { return };
     let Some(it) = st.selection.items.first().and_then(|i| st.doc.item(*i)).cloned() else {
-        ui.label("Select an object.");
+        crate::rtl::label(ui, crate::i18n::tr(&app.ui.language, "Select an object."));
         return;
     };
     use designcraft_color::BlendMode as B;
@@ -1867,7 +1875,7 @@ pub fn effects_panel(app: &mut DesignApp, ui: &mut egui::Ui) {
     divider(ui);
     let ds = it.effects.drop_shadow.clone();
     let mut on = ds.on;
-    if ui.checkbox(&mut on, "Drop Shadow").changed() {
+    if ui.checkbox(&mut on, crate::rtl::widget(ui, crate::i18n::tr(&app.ui.language, "Drop Shadow"))).changed() {
         let _ = app.run("object.dropShadow", json!({"on": on}));
     }
     if ds.on {
@@ -1891,7 +1899,7 @@ pub fn effects_panel(app: &mut DesignApp, ui: &mut egui::Ui) {
             ui.label("");
             caption(ui, "");
             let mut gl = ds.global_light;
-            if ui.checkbox(&mut gl, "Use Global Light").changed() {
+            if ui.checkbox(&mut gl, crate::rtl::widget(ui, crate::i18n::tr(&app.ui.language, "Use Global Light"))).changed() {
                 let _ = app.run("object.dropShadow", json!({"on": true, "globalLight": gl}));
             }
             ui.end_row();
@@ -1943,7 +1951,7 @@ pub fn preflight_panel(app: &mut DesignApp, ui: &mut egui::Ui) {
 /// Window › Output › Attributes: overprint fill, stroke and gap; nonprinting.
 pub fn attributes_panel(app: &mut DesignApp, ui: &mut egui::Ui) {
     let Some(it) = app.session.active().and_then(|d| d.selection.items.first().and_then(|id| d.doc.item(*id)).cloned()) else {
-        ui.label("Select an object.");
+        crate::rtl::label(ui, crate::i18n::tr(&app.ui.language, "Select an object."));
         return;
     };
     let rows = [
@@ -1980,7 +1988,7 @@ fn variable_font_axes(app: &mut DesignApp, ui: &mut egui::Ui, family: &str, styl
     let cur = |tag: &str, default: f32| face.coords.iter().find(|(t, _)| t == tag.as_bytes()).map_or(default, |c| c.1);
     let mut values: Vec<(String, f32)> = axes.iter().map(|a| (a.0.clone(), cur(&a.0, a.3))).collect();
     let mut changed = false;
-    ui.label(egui::RichText::new("Variable Font").size(11.0));
+    crate::rtl::label(ui, egui::RichText::new(crate::i18n::tr(&app.ui.language, "Variable Font")).size(11.0));
     egui::Grid::new("vf_axes").num_columns(2).spacing(vec2(6.0, 2.0)).show(ui, |ui| {
         for (i, (_, name, min, _, max)) in axes.iter().enumerate() {
             caption(ui, name);

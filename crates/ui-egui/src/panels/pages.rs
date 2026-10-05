@@ -208,24 +208,29 @@ pub fn show(app: &mut DesignApp, ui: &mut egui::Ui) {
 }
 
 fn page_menu(app: &mut DesignApp, ui: &mut egui::Ui, doc: &designcraft_doc::Document, abs: usize, si: usize) {
-    if ui.button("Insert Page After").clicked() {
+    if ui.button(crate::rtl::widget(ui, crate::i18n::tr(&app.ui.language, "Insert Page After"))).clicked() {
         let _ = app.run("layout.pages.insert", json!({"after": abs, "count": 1}));
         ui.close();
     }
-    if ui.button("Delete Page").clicked() {
+    if ui.button(crate::rtl::widget(ui, crate::i18n::tr(&app.ui.language, "Delete Page"))).clicked() {
         let _ = app.run("layout.pages.delete", json!({"pages": [abs]}));
         ui.close();
     }
-    if ui.button("Duplicate Spread").clicked() {
+    if ui.button(crate::rtl::widget(ui, crate::i18n::tr(&app.ui.language, "Duplicate Spread"))).clicked() {
         let _ = app.run("layout.pages.duplicateSpread", json!({"spread": si}));
         ui.close();
     }
-    if si > 0 && ui.button("Add to Previous Spread").on_hover_text("Spreads of up to 10 pages").clicked() {
+    if si > 0
+        && ui
+            .button(crate::rtl::widget(ui, crate::i18n::tr(&app.ui.language, "Add to Previous Spread")))
+            .on_hover_text("Spreads of up to 10 pages")
+            .clicked()
+    {
         let _ = app.run("layout.pages.toSpread", json!({"page": abs + 1, "spread": si - 1}));
         ui.close();
     }
     let mut shuffle = doc.spreads.get(si).is_none_or(|sp| sp.allow_shuffle);
-    if ui.checkbox(&mut shuffle, "Allow Spread to Shuffle").clicked() {
+    if ui.checkbox(&mut shuffle, crate::rtl::widget(ui, crate::i18n::tr(&app.ui.language, "Allow Spread to Shuffle"))).clicked() {
         let _ = app.run("layout.spreadShuffle", json!({"spread": si, "allow": shuffle}));
         ui.close();
     }
@@ -240,8 +245,8 @@ fn page_menu(app: &mut DesignApp, ui: &mut egui::Ui, doc: &designcraft_doc::Docu
             ui.close();
         }
     }
-    ui.menu_button("Apply Parent", |ui| {
-        if ui.button("[None]").clicked() {
+    ui.menu_button(crate::rtl::widget(ui, crate::i18n::tr(&app.ui.language, "Apply Parent")), |ui| {
+        if ui.button(crate::rtl::widget(ui, crate::i18n::tr(&app.ui.language, "[None]"))).clicked() {
             let _ = app.run("layout.pages.applyParent", json!({"pages": [abs], "parent": null}));
             ui.close();
         }

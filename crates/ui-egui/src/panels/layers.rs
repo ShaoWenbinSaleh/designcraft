@@ -141,18 +141,18 @@ pub fn show(app: &mut DesignApp, ui: &mut Ui) {
             let _ = app.run("layer.activate", json!({"id": l.id.0}));
         }
         resp.context_menu(|ui| {
-            if ui.button("Delete Layer").clicked() {
+            if ui.button(crate::rtl::widget(ui, crate::i18n::tr(&app.ui.language, "Delete Layer"))).clicked() {
                 let _ = app.run("layer.delete", json!({"id": l.id.0}));
                 ui.close();
             }
-            if ui.button("Move Selection Here").clicked() {
+            if ui.button(crate::rtl::widget(ui, crate::i18n::tr(&app.ui.language, "Move Selection Here"))).clicked() {
                 let _ = app.run("object.setLayer", json!({"layer": l.id.0}));
                 ui.close();
             }
             ui.separator();
             let active = app.session.active().map(|d| d.active_layer);
             if let Some(a) = active.filter(|a| *a != l.id)
-                && ui.button("Merge into Active Layer").clicked()
+                && ui.button(crate::rtl::widget(ui, crate::i18n::tr(&app.ui.language, "Merge into Active Layer"))).clicked()
             {
                 let _ = app.run("layer.merge", json!({"ids": [a.0, l.id.0], "into": a.0}));
                 ui.close();
@@ -168,7 +168,7 @@ pub fn show(app: &mut DesignApp, ui: &mut Ui) {
                     ui.close();
                 }
             }
-            if ui.button("Delete Unused Layers").clicked() {
+            if ui.button(crate::rtl::widget(ui, crate::i18n::tr(&app.ui.language, "Delete Unused Layers"))).clicked() {
                 let _ = app.run("layer.deleteUnused", json!({}));
                 ui.close();
             }
