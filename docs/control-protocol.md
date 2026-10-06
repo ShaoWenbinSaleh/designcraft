@@ -30,3 +30,5 @@ Start the app with `--control <port>` (or `DESIGNCRAFT_CONTROL_PORT`). The serve
 Headless window screenshots (locked screen, hidden window): `cargo run -p designcraft-ui-egui --example ui_shot -- script.jsonl`, where each line is one of the requests above, `{"shot": "/abs/out.png"}` or `{"steps": n}` (renders the whole UI offscreen with wgpu).
 
 The MCP server (`designcraft-cli mcp`) wraps the same methods for Claude and other agents.
+
+AI window, background tasks and review commands are documented in [AI assistant](ai-assistant.md).

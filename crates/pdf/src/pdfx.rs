@@ -92,15 +92,10 @@ pub fn make_pdfx4(pdf: &[u8], title: &str) -> Option<Vec<u8>> {
         }
         let add = "<rdf:Description rdf:about=\"\" xmlns:pdfxid=\"http://www.npes.org/pdfx/ns/id/\"><pdfxid:GTS_PDFXVersion>PDF/X-4</pdfxid:GTS_PDFXVersion></rdf:Description>";
         let xml = xml.replacen("</rdf:RDF>", &format!("{add}</rdf:RDF>"), 1);
-        let dict = match dict.find("/Length") {
-            Some(i) => {
-                let rest = &dict[i + 7..];
-                let rest = rest.trim_start();
-                let end = rest.find(|c: char| !c.is_ascii_digit()).unwrap_or(rest.len());
-                format!("{}/Length {}{}", &dict[..i], xml.len(), &rest[end..])
-            }
-            None => return None,
-        };
+        let i = dict.find("/Length")?;
+        let rest = dict[i + 7..].trim_start();
+        let end = rest.find(|c: char| !c.is_ascii_digit()).unwrap_or(rest.len());
+        let dict = format!("{}/Length {}{}", &dict[..i], xml.len(), &rest[end..]);
         let mut b = dict.trim().as_bytes().to_vec();
         b.extend_from_slice(b"\nstream\n");
         b.extend_from_slice(xml.as_bytes());

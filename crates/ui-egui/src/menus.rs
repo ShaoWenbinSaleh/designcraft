@@ -6,6 +6,21 @@ use crate::{DesignApp, ScreenMode};
 
 /// UI commands: (id, label, shortcut, params).
 pub const UI_COMMANDS: &[(&str, &str, Option<&str>, &str)] = &[
+    ("window.ai", "AI 助手", None, "{open?: bool}"),
+    ("window.ai.layout", "AI Window Layout", None, "{floating?, position?: [x,y], tab?: chat|suggestions|settings}"),
+    ("ai.chat.send", "Send AI Message", None, "{text}"),
+    ("ai.proofreadSelection", "修复标点和错别字", None, "{}"),
+    ("ai.task.stop", "Stop AI Task", None, "{}"),
+    ("ai.task.inspect", "Inspect AI Task", None, "{} → busy, notice, models (no credentials)"),
+    ("ai.settings.get", "AI Settings", None, "{} — never returns credentials"),
+    ("ai.settings.save", "Save AI Settings", None, "{provider?, endpoint?, model?, account?, apiKey?}"),
+    ("ai.auth.login", "Continue with ChatGPT", None, "{newAccount?: bool}"),
+    ("ai.auth.logout", "Sign Out of ChatGPT", None, "{}"),
+    ("ai.auth.usage", "ChatGPT Usage", None, "{}"),
+    ("ai.models", "Load AI Models", None, "{}"),
+    ("ai.connection.test", "Test AI Connection", None, "{}"),
+    ("ai.report.export", "Export AI Review Report", None, "{path?} — never overwrites"),
+    ("ai.suggestion.show", "Locate AI Original", None, "{id} — show text or Story Editor"),
     ("app.newDocumentDialog", "New Document…", Some("Cmd+N"), "{}"),
     ("app.openDialog", "Open…", Some("Cmd+O"), "{}"),
     ("app.placeDialog", "Place…", Some("Cmd+D"), "{}"),
@@ -593,6 +608,8 @@ pub const MENUS: &[(&str, &[&str])] = &[
     (
         "Window",
         &[
+            "ui:window.ai",
+            "-",
             ">Arrange",
             "ui:window.newWindow",
             "ui:window.split",
@@ -662,6 +679,27 @@ pub fn ui_label(id: &str) -> Option<(&'static str, Option<&'static str>)> {
 
 /// Run a UI command; `None` if `id` isn't one.
 pub fn run_ui(app: &mut DesignApp, id: &str, p: &Value) -> Option<Result<Value, String>> {
+    if matches!(
+        id,
+        "window.ai"
+            | "window.ai.layout"
+            | "ai.chat.send"
+            | "ai.proofreadSelection"
+            | "ai.task.inspect"
+            | "ai.task.stop"
+            | "ai.settings.get"
+            | "ai.settings.save"
+            | "ai.auth.login"
+            | "ai.auth.logout"
+            | "ai.auth.usage"
+            | "ai.models"
+            | "ai.connection.test"
+            | "ai.report.export"
+            | "ai.suggestion.show"
+    ) {
+        return Some(crate::ai::command(app, id, p));
+    }
+
     let rect = app.canvas_rect;
     let flag = |b: &mut bool| {
         *b = !*b;
@@ -1599,6 +1637,7 @@ pub fn menu_tree() -> Vec<(&'static str, Vec<Item>)> {
 /// Check state of a toggle command (None = not a toggle).
 pub fn checked(app: &DesignApp, id: &str, params: &Value) -> Option<bool> {
     Some(match id {
+        "window.ai" => app.ui.ai.open,
         "view.rulers" => app.ui.rulers,
         "view.frameEdges" => app.ui.frame_edges,
         "view.overprintPreview" => app.ui.overprint_preview,

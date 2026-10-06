@@ -2,6 +2,20 @@
 
 DesignCraft aims at full Adobe InDesign parity — and to be better: faster, open (documented JSON format + IDML), scriptable by agents (MCP), and available on the web.
 
+## AI assistant integration (2026-10-06)
+
+- **AI.1 — Native assistant window:** Rust/egui Window → AI 助手, right docking/floating,
+  chat/review/settings, persisted window placement, Unicode-safe proposals, atomic acceptance
+  and undo, native document chat/review persistence, and standalone HTML proofreading reports.
+- Compatible API transport and native ChatGPT browser authorization, OS credential storage,
+  account/model selection, cancellation and read/propose-only model tools are implemented.
+  Live ChatGPT account consent/eligibility and production provider inference still require
+  account-level acceptance; automated verification uses synthetic data.
+- Selection proofreading now treats captured snapshots as completed reads and exposes only
+  the proposal tool; tool failures and zero-proposal replies no longer show a misleading success notice.
+- Multi-reference comparison and editorial-note linking remain the next integration phase.
+- Usage, persistence format and control commands: [AI assistant](docs/ai-assistant.md).
+
 ## Status (2026-10-01)
 
 **Working today**

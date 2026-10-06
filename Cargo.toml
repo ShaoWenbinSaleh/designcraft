@@ -12,6 +12,7 @@ repository = "https://github.com/storytold/designcraft"
 
 [workspace.dependencies]
 # internal
+designcraft-ai = { path = "crates/ai" }
 designcraft-geom = { path = "crates/geom" }
 designcraft-color = { path = "crates/color" }
 designcraft-doc = { path = "crates/doc" }

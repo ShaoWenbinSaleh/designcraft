@@ -535,7 +535,7 @@ impl<'r> Importer<'r> {
             let nums = |k: &str| e.get(k).unwrap_or("").split_whitespace().filter_map(|x| x.parse::<f64>().ok()).collect::<Vec<_>>();
             let kind = match e.local() {
                 "StripedStrokeStyle" => designcraft_doc::StrokeType::Stripes {
-                    bands: nums("StripeArray").chunks_exact(2).map(|c| (c[0] / 100.0, (c[1] - c[0]) / 100.0)).collect(),
+                    bands: nums("StripeArray").as_chunks::<2>().0.iter().map(|c| (c[0] / 100.0, (c[1] - c[0]) / 100.0)).collect(),
                 },
                 "DashedStrokeStyle" => designcraft_doc::StrokeType::Dashed { pattern: nums("DashArray") },
                 _ => designcraft_doc::StrokeType::Dotted,
@@ -2103,6 +2103,7 @@ impl<'r> Importer<'r> {
         self.settings.lists = std::mem::take(&mut self.lists);
         // Make sure built-in paragraph styles exist and are first.
         let d = Document {
+            ai: None,
             title,
             settings: self.settings.clone(),
             spreads: std::mem::take(&mut self.spreads).into_iter().map(Arc::new).collect(),

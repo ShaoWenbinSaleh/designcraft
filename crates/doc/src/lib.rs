@@ -8,6 +8,7 @@
 //! x = 0 with their tops at y = 0. Items live in spread space via `Item::xf`.
 #![forbid(unsafe_code)]
 
+pub mod ai;
 pub mod anchored;
 pub mod arrow;
 pub mod attrs;
@@ -438,6 +439,8 @@ fn is_zero(v: &u32) -> bool {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Document {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ai: Option<Arc<ai::AiDocument>>,
     pub title: String,
     pub settings: DocSettings,
     pub spreads: Vec<Arc<Spread>>,
@@ -670,6 +673,14 @@ impl Document {
 
     /// Validate structural invariants (ids unique, threads consistent, stories well-formed).
     pub fn check(&self) -> Result<()> {
+        if let Some(ai) = &self.ai {
+            if ai.version != 1 {
+                return Err(DocError::Invalid("unsupported AI record version".into()));
+            }
+            if ai.snapshots.values().any(|s| s.text.get(s.start..s.end).is_none()) {
+                return Err(DocError::Invalid("invalid AI snapshot boundaries".into()));
+            }
+        }
         let mut ids = std::collections::HashSet::new();
         for sp in self.spreads.iter().chain(self.parents.iter()) {
             for it in &sp.items {

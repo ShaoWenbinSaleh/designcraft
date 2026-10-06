@@ -58,3 +58,5 @@ Generated-in-code art is original and has no file to list: the UI icon set (`cra
 | `docs/brand/artcraft-logo-white.svg`, `docs/brand/artcraft-logo-white.png` | ArtCraft / Storyteller | ArtCraft brand kit (project owner) | ArtCraft trademark — used with the owner's permission; not covered by the code licence | Wordmark for dark backgrounds |
 | `docs/brand/artcraft-mark.svg`, `docs/brand/artcraft-mark.png` | ArtCraft / Storyteller | ArtCraft brand kit (project owner) | ArtCraft trademark — used with the owner's permission; not covered by the code licence | The mark; its outline is drawn in code by `crates/ui-egui/src/about.rs` (About splash, start screen) |
 | `docs/brand/artcraft-mark-black.svg`, `docs/brand/artcraft-mark-black.png` | ArtCraft / Storyteller | ArtCraft brand kit (project owner) | ArtCraft trademark — used with the owner's permission; not covered by the code licence | Mark for light backgrounds |
+
+The AI assistant may load an installed OS CJK font at runtime (STHeiti, Microsoft YaHei, or Noto Sans CJK). No system-font files are copied or redistributed with DesignCraft.

@@ -256,6 +256,22 @@ pub fn install_fonts(ctx: &egui::Context) {
     fonts.families.entry(FontFamily::Proportional).or_default().insert(0, "ui".into());
     fonts.families.entry(FontFamily::Monospace).or_default().insert(0, "mono".into());
     fonts.families.insert(FontFamily::Name("semibold".into()), vec!["ui-semibold".into(), "ui".into()]);
+    // System fonts are used at runtime only; no OS font is bundled or copied.
+    #[cfg(not(target_arch = "wasm32"))]
+    for path in [
+        "/System/Library/Fonts/STHeiti Medium.ttc",
+        "C:/Windows/Fonts/msyh.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+    ] {
+        if let Ok(bytes) = std::fs::read(path) {
+            fonts.font_data.insert("system-cjk".into(), Arc::new(FontData::from_owned(bytes)));
+            for family in [FontFamily::Proportional, FontFamily::Monospace, FontFamily::Name("semibold".into())] {
+                fonts.families.entry(family).or_default().push("system-cjk".into());
+            }
+            break;
+        }
+    }
     ctx.set_fonts(fonts);
 }
 

@@ -119,6 +119,7 @@ impl Document {
             ..Default::default()
         };
         let mut d = Document {
+            ai: None,
             title: nd.title.clone(),
             settings,
             spreads: vec![],

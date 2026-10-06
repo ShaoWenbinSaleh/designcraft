@@ -17,6 +17,9 @@ sdk-extensions:
 command: designcraft
 finish-args:
   - --share=ipc
+  # Native AI providers and the loopback OAuth callback.
+  - --share=network
+  - --talk-name=org.freedesktop.secrets
   - --socket=wayland
   - --socket=fallback-x11
   - --device=dri

@@ -107,7 +107,11 @@ pub fn specs() -> Vec<CommandSpec> {
             let st = s.doc_mut()?;
             let e = st.history.undo.pop().expect("checked");
             st.history.redo.push(HistoryEntry { label: e.label.clone(), doc: st.doc.clone(), selection: st.selection.clone() });
-            st.doc = e.doc;
+            let mut restored = (*e.doc).clone();
+            if !matches!(e.label.as_str(), "New AI Conversation" | "Clear AI Records") {
+                super::ai::preserve_records(&mut restored, &st.doc);
+            }
+            st.doc = if restored.ai == e.doc.ai { e.doc } else { Arc::new(restored) };
             st.selection = e.selection;
             st.revision += 1;
             Ok(json!({"undone": e.label}))
@@ -116,7 +120,11 @@ pub fn specs() -> Vec<CommandSpec> {
             let st = s.doc_mut()?;
             let e = st.history.redo.pop().expect("checked");
             st.history.undo.push(HistoryEntry { label: e.label.clone(), doc: st.doc.clone(), selection: st.selection.clone() });
-            st.doc = e.doc;
+            let mut restored = (*e.doc).clone();
+            if !matches!(e.label.as_str(), "New AI Conversation" | "Clear AI Records") {
+                super::ai::preserve_records(&mut restored, &st.doc);
+            }
+            st.doc = if restored.ai == e.doc.ai { e.doc } else { Arc::new(restored) };
             st.selection = e.selection;
             st.revision += 1;
             Ok(json!({"redone": e.label}))
@@ -266,6 +274,8 @@ pub fn specs() -> Vec<CommandSpec> {
 pub(crate) fn clip_doc(s: &Session) -> Result<designcraft_doc::Document> {
     let st = s.doc()?;
     let mut d = (*st.doc).clone();
+    // A copied object/snippet must not carry the source document's private chat.
+    d.ai = None;
     let keep: Vec<ItemId> = st.selection.items.clone();
     // Gather the selected items (keep their spread coordinates) into spread 0.
     let mut items = Vec::new();

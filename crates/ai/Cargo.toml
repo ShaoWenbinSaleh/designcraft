@@ -1,0 +1,23 @@
+[package]
+name = "designcraft-ai"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+designcraft-doc = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+url = "2"
+rand = "0.9"
+sha2 = "0.10"
+base64 = "0.22"
+jsonwebtoken = "9"
+keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }
+webbrowser = "1"
