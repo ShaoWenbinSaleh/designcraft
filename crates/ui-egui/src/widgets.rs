@@ -359,7 +359,7 @@ pub fn link_label(ui: &mut Ui, text: &str, width: f32) -> Response {
 }
 
 /// `•••` more-options, right-aligned on its own row at the bottom of a section.
-pub fn more_options(ui: &mut Ui) -> Response {
+pub fn more_options(ui: &mut Ui, language: &str) -> Response {
     let t = Tokens::get(ui.ctx());
     let (row, _) = ui.allocate_exact_size(vec2(ui.available_width(), 14.0), Sense::hover());
     let r = Rect::from_min_max(pos2(row.max.x - 26.0, row.min.y), pos2(row.max.x - 4.0, row.max.y));
@@ -367,7 +367,9 @@ pub fn more_options(ui: &mut Ui) -> Response {
     for i in 0..3 {
         ui.painter().circle_filled(pos2(r.min.x + 4.0 + i as f32 * 7.0, r.center().y), 1.9, if resp.hovered() { t.text_strong } else { t.icon });
     }
-    resp.on_hover_text("More Options")
+    resp.on_hover_ui(|ui| {
+        crate::rtl::label(ui, crate::i18n::tr(language, "More Options"));
+    })
 }
 
 /// A small dim label (field captions like `X:` or `W:`).
@@ -514,7 +516,13 @@ pub fn icon_toggle_sized(ui: &mut Ui, icon: &str, on: bool, tip: &str, size: egu
     }
     let s = (size.y - 4.0).min(17.0);
     crate::icons::paint(ui.painter(), Rect::from_center_size(r.center(), vec2(s, s)), icon, if on { t.text_strong } else { t.icon });
-    if tip.is_empty() { resp } else { resp.on_hover_text(tip) }
+    if tip.is_empty() {
+        resp
+    } else {
+        resp.on_hover_ui(|ui| {
+            crate::rtl::label(ui, tip);
+        })
+    }
 }
 
 /// An InDesign checkbox: 12 pt rounded box, white check, label.
@@ -552,7 +560,7 @@ pub fn segmented(ui: &mut Ui, labels: &[&str], active: usize, width: f32) -> Opt
         } else if resp.hovered() {
             ui.painter().rect_filled(sr, 0.0, t.hover);
         }
-        ui.painter().text(sr.center(), egui::Align2::CENTER_CENTER, *l, label_font(), if i == active { t.accent } else { t.text });
+        crate::rtl::paint(ui.painter(), sr.center(), egui::Align2::CENTER_CENTER, l, label_font(), if i == active { t.accent } else { t.text });
         if i > 0 {
             ui.painter().line_segment([sr.left_top(), sr.left_bottom()], Stroke::new(1.0, t.field_border));
         }

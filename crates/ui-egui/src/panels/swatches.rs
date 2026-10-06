@@ -14,7 +14,12 @@ pub fn show(app: &mut DesignApp, ui: &mut egui::Ui) {
     let text = st.selection.text.is_some();
     let fill_cur = super::sel_info(app).map(|i| i.fill);
     ui.horizontal(|ui| {
-        ui.label(egui::RichText::new(if text { "Applies to text" } else { "Applies to fill" }).size(11.0).color(t.text_dim));
+        crate::rtl::label(
+            ui,
+            egui::RichText::new(crate::i18n::tr(&app.ui.language, if text { "Applies to text" } else { "Applies to fill" }))
+                .size(11.0)
+                .color(t.text_dim),
+        );
     });
     // Unnamed colours (mixed in the Color panel) aren't listed until Add to Swatches; swatches in
     // colour groups are listed under their folder.
@@ -65,7 +70,7 @@ pub fn show(app: &mut DesignApp, ui: &mut egui::Ui) {
             egui::RichText::new(crate::i18n::tr(&app.ui.language, "Right-click: stroke, groups")).size(10.5).color(t.text_disabled),
         ));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if icons::button(ui, "plus", 20.0, false, "New Swatch").clicked() {
+            if icons::button(ui, "plus", 20.0, false, crate::i18n::tr(&app.ui.language, "New Swatch")).clicked() {
                 let _ = app.run("swatch.create", json!({"color": {"c": 0, "m": 50, "y": 100, "k": 0}}));
             }
             ui.menu_button("☰", |ui| {
@@ -308,7 +313,7 @@ pub fn color_panel(app: &mut DesignApp, ui: &mut egui::Ui) {
     spectrum(app, ui, target);
     ui.horizontal(|ui| {
         let unnamed = sw.as_ref().is_some_and(|w| w.hidden);
-        if ui.add_enabled(unnamed, egui::Button::new("Add to Swatches")).clicked() {
+        if ui.add_enabled(unnamed, egui::Button::new(crate::rtl::widget(ui, crate::i18n::tr(&app.ui.language, "Add to Swatches")))).clicked() {
             let _ = app.run("swatch.addToSwatches", json!({"target": target}));
         }
     });
@@ -413,15 +418,24 @@ pub fn gradient_panel(app: &mut DesignApp, ui: &mut egui::Ui) {
     };
     let radial = g.kind == designcraft_color::GradientKind::Radial;
     ui.horizontal(|ui| {
-        crate::widgets::caption(ui, "Type:");
-        egui::ComboBox::from_id_salt("grad_type").selected_text(g.kind.label()).width(100.0).show_ui(ui, |ui| {
-            for (k, v) in [("Linear", "linear"), ("Radial", "radial")] {
-                if ui.selectable_label(g.kind.label() == k, k).clicked() {
-                    let _ = app.run("object.gradient", json!({"kind": v}));
+        crate::widgets::caption(ui, crate::i18n::tr(&app.ui.language, "Type:"));
+        egui::ComboBox::from_id_salt("grad_type")
+            .selected_text(crate::rtl::widget(ui, crate::i18n::tr(&app.ui.language, g.kind.label())))
+            .width(100.0)
+            .show_ui(ui, |ui| {
+                for (k, v) in [("Linear", "linear"), ("Radial", "radial")] {
+                    if ui.selectable_label(g.kind.label() == k, crate::rtl::widget(ui, crate::i18n::tr(&app.ui.language, k))).clicked() {
+                        let _ = app.run("object.gradient", json!({"kind": v}));
+                    }
                 }
-            }
-        });
-        if ui.button(crate::rtl::widget(ui, crate::i18n::tr(&app.ui.language, "Reverse"))).on_hover_text("Reverse the gradient").clicked() {
+            });
+        if ui
+            .button(crate::rtl::widget(ui, crate::i18n::tr(&app.ui.language, "Reverse")))
+            .on_hover_ui(|ui| {
+                crate::rtl::label(ui, crate::i18n::tr(&app.ui.language, "Reverse the gradient"));
+            })
+            .clicked()
+        {
             let _ = app.run("object.gradient", json!({"reverse": true}));
         }
     });
@@ -429,7 +443,7 @@ pub fn gradient_panel(app: &mut DesignApp, ui: &mut egui::Ui) {
     let drag_id = egui::Id::new("grad_drag");
     let mut sel: usize = ui.data(|d| d.get_temp(sel_id)).unwrap_or(0).min(g.stops.len().saturating_sub(1));
     ui.horizontal(|ui| {
-        crate::widgets::caption(ui, "Location:");
+        crate::widgets::caption(ui, crate::i18n::tr(&app.ui.language, "Location:"));
         let loc = g.stops.get(sel).map(|s| s.offset as f64 * 100.0);
         if let Some(v) = crate::widgets::number(ui, "grad_loc", loc, " %", 54.0, 1) {
             let mut stops = stops_json(&g);
@@ -437,7 +451,7 @@ pub fn gradient_panel(app: &mut DesignApp, ui: &mut egui::Ui) {
             let _ = app.run("object.gradient", json!({"stops": stops}));
         }
         if !radial {
-            crate::widgets::caption(ui, "Angle:");
+            crate::widgets::caption(ui, crate::i18n::tr(&app.ui.language, "Angle:"));
             let angle = fill.gradient_vector.map(|[x0, y0, x1, y1]| (-(y1 - y0)).atan2(x1 - x0).to_degrees()).or(fill.gradient_angle).unwrap_or(0.0);
             if let Some(v) = crate::widgets::number(ui, "grad_angle", Some(angle), "°", 54.0, 1) {
                 let _ = app.run("object.gradient", json!({"angle": v}));
@@ -546,7 +560,7 @@ pub fn gradient_panel(app: &mut DesignApp, ui: &mut egui::Ui) {
     // The selected stop's colour.
     if let Some(s) = g.stops.get(sel) {
         ui.horizontal(|ui| {
-            crate::widgets::caption(ui, "Stop Color:");
+            crate::widgets::caption(ui, crate::i18n::tr(&app.ui.language, "Stop Color:"));
             let [r, gg, bb] = s.color.to_rgb();
             let mut rgb = [(r * 255.0) as u8, (gg * 255.0) as u8, (bb * 255.0) as u8];
             if egui::color_picker::color_edit_button_srgb(ui, &mut rgb).changed() {

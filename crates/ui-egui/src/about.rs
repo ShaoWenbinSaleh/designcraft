@@ -113,7 +113,12 @@ pub fn show(app: &mut DesignApp, ctx: &egui::Context) {
                 ui,
                 egui::RichText::new(crate::i18n::tr(&app.ui.language, "DesignCraft")).font(semibold(26.0)).color(t.text_strong),
             ));
-            ui.label(egui::RichText::new(format!("Version {}", env!("CARGO_PKG_VERSION"))).size(12.0).color(t.text_dim));
+            crate::rtl::label(
+                ui,
+                egui::RichText::new(format!("{} {}", crate::i18n::tr(&app.ui.language, "Version"), env!("CARGO_PKG_VERSION")))
+                    .size(12.0)
+                    .color(t.text_dim),
+            );
             ui.add_space(4.0);
             ui.label(crate::rtl::widget(
                 ui,

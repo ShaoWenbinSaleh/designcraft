@@ -132,9 +132,11 @@ pub fn flyout(app: &mut DesignApp, ctx: &egui::Context) {
     egui::Area::new(egui::Id::new("panel_flyout")).order(egui::Order::Foreground).fixed_pos(pos).show(ctx, |ui| {
         egui::Frame::popup(ui.style()).fill(t.panel).inner_margin(egui::Margin::same(0)).show(ui, |ui| {
             ui.set_width(256.0);
+            // A previous shorter flyout must not constrain the next panel's scroll viewport.
+            ui.set_max_height((screen.max.y - pos.y - 12.0).max(80.0));
             let (strip, _) = ui.allocate_exact_size(vec2(256.0, 26.0), Sense::hover());
             ui.painter().rect_filled(strip, 0.0, t.panel_darker);
-            ui.painter().text(strip.min + vec2(10.0, 13.0), egui::Align2::LEFT_CENTER, label, semibold(12.0), t.text_strong);
+            crate::rtl::paint(ui.painter(), strip.min + vec2(10.0, 13.0), egui::Align2::LEFT_CENTER, &label, semibold(12.0), t.text_strong);
             let close = egui::Rect::from_min_size(egui::pos2(strip.max.x - 22.0, strip.min.y + 4.0), vec2(18.0, 18.0));
             if ui.interact(close, ui.id().with("flyclose"), Sense::click()).clicked() {
                 open = false;

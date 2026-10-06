@@ -186,12 +186,21 @@ pub fn show(app: &mut DesignApp, ui: &mut egui::Ui) {
     ui.add_space(6.0);
     ui.spacing_mut().item_spacing.y = 4.0;
     ui.horizontal(|ui| {
-        ui.label(egui::RichText::new(format!("{} Pages in {} Spreads", doc.page_count(), doc.spreads.len())).size(11.0).color(t.text_dim));
+        crate::rtl::label(
+            ui,
+            egui::RichText::new(
+                crate::i18n::tr(&app.ui.language, "{pages} Pages in {spreads} Spreads")
+                    .replace("{pages}", &doc.page_count().to_string())
+                    .replace("{spreads}", &doc.spreads.len().to_string()),
+            )
+            .size(11.0)
+            .color(t.text_dim),
+        );
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if icons::button(ui, "trash", 20.0, false, "Delete Page").clicked() {
+            if icons::button(ui, "trash", 20.0, false, crate::i18n::tr(&app.ui.language, "Delete Page")).clicked() {
                 let _ = app.run("layout.pages.delete", json!({"pages": [cur]}));
             }
-            if icons::button(ui, "plus", 20.0, false, "Insert Page").clicked() {
+            if icons::button(ui, "plus", 20.0, false, crate::i18n::tr(&app.ui.language, "Insert Page")).clicked() {
                 let _ = app.run("layout.pages.insert", json!({"after": cur, "count": 1}));
             }
         });
@@ -223,7 +232,9 @@ fn page_menu(app: &mut DesignApp, ui: &mut egui::Ui, doc: &designcraft_doc::Docu
     if si > 0
         && ui
             .button(crate::rtl::widget(ui, crate::i18n::tr(&app.ui.language, "Add to Previous Spread")))
-            .on_hover_text("Spreads of up to 10 pages")
+            .on_hover_ui(|ui| {
+                crate::rtl::label(ui, crate::i18n::tr(&app.ui.language, "Spreads of up to 10 pages"));
+            })
             .clicked()
     {
         let _ = app.run("layout.pages.toSpread", json!({"page": abs + 1, "spread": si - 1}));
@@ -240,7 +251,7 @@ fn page_menu(app: &mut DesignApp, ui: &mut egui::Ui, doc: &designcraft_doc::Docu
         ("layout.removeOverrides", "Remove All Local Overrides"),
         ("layout.detachAll", "Detach All Objects from Parent"),
     ] {
-        if ui.button(label).clicked() {
+        if ui.button(crate::rtl::widget(ui, crate::i18n::tr(&app.ui.language, label))).clicked() {
             let _ = app.run(id, json!({"page": abs}));
             ui.close();
         }

@@ -1902,7 +1902,11 @@ pub fn palette(app: &mut DesignApp, ctx: &egui::Context) {
     let mut run: Option<(String, Value)> = None;
     egui::Modal::new(egui::Id::new("palette")).show(ctx, |ui| {
         ui.set_width(480.0);
-        let r = ui.add(egui::TextEdit::singleline(&mut q).hint_text("Search styles and commands…").desired_width(f32::INFINITY));
+        let r = ui.add(
+            egui::TextEdit::singleline(&mut q)
+                .hint_text(crate::rtl::widget(ui, crate::i18n::tr(&app.ui.language, "Search styles and commands…")))
+                .desired_width(f32::INFINITY),
+        );
         r.request_focus();
         let items = quick_apply_items(&app.session, &q);
         egui::ScrollArea::vertical().max_height(340.0).show(ui, |ui| {

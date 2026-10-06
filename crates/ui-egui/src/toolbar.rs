@@ -24,8 +24,14 @@ pub fn show(app: &mut DesignApp, ui: &mut egui::Ui) {
             // Collapse chevrons.
             ui.horizontal(|ui| {
                 ui.add_space(width / 2.0 - 8.0);
-                if icons::button(ui, if cols == 1 { "double-chevron-right" } else { "double-chevron-left" }, 16.0, false, "Toggle double column")
-                    .clicked()
+                if icons::button(
+                    ui,
+                    if cols == 1 { "double-chevron-right" } else { "double-chevron-left" },
+                    16.0,
+                    false,
+                    crate::i18n::tr(&app.ui.language, "Toggle double column"),
+                )
+                .clicked()
                 {
                     app.ui.tools_double_column = !app.ui.tools_double_column;
                 }
@@ -266,7 +272,13 @@ fn fill_stroke_proxy(app: &mut DesignApp, ui: &mut egui::Ui, width: f32) {
             ui.painter().rect(r, 1.5, t.well, Stroke::new(1.0, t.well_rim), StrokeKind::Inside);
         }
         icons::paint(ui.painter(), r.shrink(1.5), icon, if on { t.text_strong } else { t.icon });
-        if ui.interact(r, ui.id().with(("proxy_fmt", k)), Sense::click()).on_hover_text(tip).clicked() {
+        if ui
+            .interact(r, ui.id().with(("proxy_fmt", k)), Sense::click())
+            .on_hover_ui(|ui| {
+                crate::rtl::label(ui, crate::i18n::tr(&app.ui.language, tip));
+            })
+            .clicked()
+        {
             ui.data_mut(|d| d.insert_temp(text_id, k == 1));
         }
     }
@@ -287,7 +299,7 @@ fn fill_stroke_proxy(app: &mut DesignApp, ui: &mut egui::Ui, width: f32) {
     }
     egui::Popup::context_menu(&resp).show(|ui| {
         for (label, sw) in [("Apply Color", "[Black]"), ("Apply None", "[None]")] {
-            if ui.button(label).clicked() {
+            if ui.button(crate::rtl::widget(ui, crate::i18n::tr(&app.ui.language, label))).clicked() {
                 let _ = app.run(target, json!({"swatch": sw}));
                 ui.close();
             }
@@ -297,7 +309,7 @@ fn fill_stroke_proxy(app: &mut DesignApp, ui: &mut egui::Ui, width: f32) {
     separator(ui, &t);
     // Utility (frame options).
     ui.vertical_centered(|ui| {
-        if tool_button(ui, "frame-options", false, "Text Frame Options").clicked() {
+        if tool_button(ui, "frame-options", false, crate::i18n::tr(&app.ui.language, "Text Frame Options")).clicked() {
             app.ui.dialog = Some(crate::dialogs::Dialog::new("textFrameOptions", json!({})));
         }
     });
@@ -315,13 +327,15 @@ fn fill_stroke_proxy(app: &mut DesignApp, ui: &mut egui::Ui, width: f32) {
         t.text_strong,
     );
     flyout_triangle(ui.painter(), well, t.icon);
-    let resp = resp.on_hover_text(if preview { "Preview (W)" } else { "Normal (W)" });
+    let resp = resp.on_hover_ui(|ui| {
+        crate::rtl::label(ui, crate::i18n::tr(&app.ui.language, if preview { "Preview (W)" } else { "Normal (W)" }));
+    });
     if resp.clicked() {
         let _ = app.run("view.togglePreview", json!({}));
     }
     egui::Popup::context_menu(&resp).show(|ui| {
         for (label, mode) in [("Normal", "normal"), ("Preview", "preview"), ("Bleed", "bleed"), ("Slug", "slug"), ("Presentation", "presentation")] {
-            if ui.button(label).clicked() {
+            if ui.button(crate::rtl::widget(ui, crate::i18n::tr(&app.ui.language, label))).clicked() {
                 let _ = app.run("view.screenMode", json!({"mode": mode}));
                 ui.close();
             }
@@ -356,5 +370,7 @@ fn tool_button(ui: &mut egui::Ui, icon: &str, active: bool, tip: &str) -> egui::
         ui.painter().rect_filled(egui::Rect::from_center_size(r.center(), egui::vec2(28.0, 20.0)), 2.0, t.hover);
     }
     icons::paint(ui.painter(), egui::Rect::from_center_size(r.center(), egui::vec2(17.0, 17.0)), icon, if active { t.text_strong } else { t.icon });
-    resp.on_hover_text(tip)
+    resp.on_hover_ui(|ui| {
+        crate::rtl::label(ui, tip);
+    })
 }
