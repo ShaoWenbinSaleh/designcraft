@@ -37,16 +37,23 @@ It contains no scripts or remote resources. Page labels can be unknown for overs
 - The built-in model has only `get_text_frames`, `read_text`, and `propose_text_change`. It
   cannot accept changes or execute arbitrary engine/UI commands. Document text is source data,
   not instructions.
-- `read_text` returns a snapshot ID and a bounded page of text. Model offsets count Unicode
-  scalar values; native story/selection ranges remain UTF-8 byte offsets. Surrogate pairs must
-  not be copied from the UXP implementation.
+- `read_text` returns a snapshot ID and a bounded page of text. Models quote a unique exact
+  original span; the host computes UTF-8 boundaries. Model-supplied offsets are discarded.
+  Repeated text requires unchanged context in both original and replacement. Deterministic
+  engine clients may still supply Unicode scalar offsets; mismatches resolve only when the
+  original quote is unique, never using fuzzy or nearest-match replacement.
 - The proofreading shortcut captures the current selection and splits it at paragraph boundaries,
   with a 16,000-character maximum and safe splitting of longer paragraphs. Each request sees only
   its captured batch and can propose only against captured selection snapshots.
 - Original text must match exactly. Changes to the source story invalidate pending suggestions.
   Accepted edits rebase unaffected suggestions; overlapping alternatives become stale.
-- Unchanged prefixes/suffixes are removed before editing, preserving surrounding formatting.
-  Inserted text inherits local formatting. Table cells, footnote text, and replacements crossing
+- Acceptance computes a Unicode diff and changes only the differing spans. Unchanged text
+  keeps its character style and overrides; replacement characters inherit their corresponding
+  original character formats, and added characters inherit the local format. Paragraph formats
+  and text-frame properties remain untouched. Layout controls (paragraph breaks, tabs, forced
+  breaks, nonbreaking spaces and discretionary breaks) cannot be added or removed. Text length
+  changes may naturally reflow under the existing layout rules. Large ambiguous rewrites that
+  exceed the bounded diff budget are rejected instead of flattening formatting. Table cells, footnote text, and replacements crossing
   special object markers are not supported in this first version.
 - Batch acceptance validates every edit and overlap before committing a copy of the document.
   No partial document changes survive a validation failure. Undo restores acceptance state.
@@ -91,7 +98,7 @@ remote MCP backend):
 | `ai.models`, `ai.connection.test` | Asynchronous catalog / completion-plus-tool test |
 | `ai.text.frames` | List story IDs, frames, character counts |
 | `ai.text.read` | `{story?, offset?, length?}`; no story means selected text |
-| `ai.suggestion.propose` | `{snapshot, offset, original, replacement, reason}` |
+| `ai.suggestion.propose` | `{snapshot, original, replacement, reason, offset?}` |
 | `ai.suggestion.list` | Revalidated persisted review state |
 | `ai.suggestion.accept/reject/locate` | `{id}`; locate is engine-only selection |
 | `ai.suggestion.show` | `{id}`; additionally navigates the UI |
@@ -136,3 +143,27 @@ reply with no proposals. Existing rejected runs can be retried on the selected t
 The regression run passed all six CI gates (526 tests passed, two existing tests
 ignored), rebuilt the release executable, and re-rendered the review/save/reopen
 fixture. No live provider request or account credential was used for this regression.
+
+## Live exact-quote regression (2026-10-07)
+
+Run `cargo run -p designcraft-ui-egui --example ai_live_check -- --live /tmp/ai-live`
+to use the saved provider and OS credentials with synthetic text only. This is opt-in
+and is never run by CI. It checks Chinese plus emoji, repeated misspellings, a
+nonzero selection start, long/overset text, unchanged text outside the selection,
+acceptance, one-step undo and native save/reopen. Test artifacts contain synthetic
+source, model proposals and chat; credentials are never printed or persisted there.
+
+The live run passed for both short and long input (one and two proposals respectively).
+The release app also displayed these real proposals, located the overset story and
+accepted both proposals; undo was exercised again through its control channel.
+Final verification: all six CI gates passed (527 tests passed, two existing tests
+ignored), including WASM checks with the matching-source standard-library build
+described above. The release executable was rebuilt after the fix.
+
+The live regression also applies mixed character formatting before proofreading and checks
+that the original character runs, paragraph formatting and frames survive acceptance.
+
+Content-only mode verification: 531 tests passed, with all six CI gates passing.
+Live short/long proofreading preserved existing mixed character runs, paragraph
+formats and frames through acceptance, undo and save/reopen. The updated window
+and before/after document rendering were inspected; the release binary was rebuilt.

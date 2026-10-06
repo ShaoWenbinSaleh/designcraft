@@ -27,7 +27,7 @@ pub fn specs() -> Vec<CommandSpec> {
             Ok(json!(s.doc()?.doc.stories.values().map(|st| json!({"story":st.id.0,"frames":st.frames,"characters":st.text.chars().count()})).collect::<Vec<_>>()))
         }),
         cmd!(query "ai.text.read", "AI Read Text", [], None, "{story?, offset?: Unicode characters, length?: characters (max 16000)}; without story reads selected text", has_doc, read),
-        cmd!(query "ai.suggestion.propose", "AI Propose Change", [], None, "{snapshot, offset: Unicode characters within snapshot, original, replacement, reason}", has_doc, propose),
+        cmd!(query "ai.suggestion.propose", "AI Propose Change", [], None, "{snapshot, original: unique exact quote, replacement, reason, offset?: Unicode characters within snapshot}", has_doc, propose),
         cmd!(query "ai.suggestion.list", "AI Suggestions", [], None, "{} → current review data; revalidates pending suggestions", has_doc, |s,_| {
             refresh(s)?; Ok(json!(s.doc()?.doc.ai))
         }),
@@ -114,6 +114,9 @@ pub fn propose(s: &mut Session, p: &Value) -> Result<Value> {
     let original = string(p, "original")?;
     let replacement = string(p, "replacement")?.replace("\r\n", "\n").replace('\r', "\n");
     let reason = string(p, "reason")?;
+    if !designcraft_ai::same_layout(original, &replacement) {
+        return Err(err("AI 仅修改文字内容，不能增删段落、制表符或换行等排版标记。"));
+    }
     if original == replacement {
         return Err(err("no change"));
     }
@@ -121,12 +124,10 @@ pub fn propose(s: &mut Session, p: &Value) -> Result<Value> {
         return Err(err("suggestion too large"));
     }
     let part = snap.text.get(snap.start..snap.end).ok_or_else(|| err("invalid snapshot"))?;
-    let offset = number(p, "offset")? as usize;
-    let mut start = snap.start + designcraft_ai::byte_offset(part, offset).ok_or_else(|| err("invalid offset"))?;
-    let mut end = start.checked_add(original.len()).ok_or_else(|| err("invalid length"))?;
-    if end > snap.end || snap.text.get(start..end) != Some(original) {
-        return Err(err("原文与指定位置不匹配。"));
-    }
+    let offset = p.get("offset").and_then(Value::as_u64).and_then(|n| usize::try_from(n).ok());
+    let relative = designcraft_ai::quote_offset(part, original, offset).map_err(err)?;
+    let mut start = snap.start + relative;
+    let mut end = start + original.len();
     if designcraft_ai::protected(original) || designcraft_ai::protected(&replacement) {
         return Err(err("不能跨越或插入特殊对象标记。"));
     }
@@ -177,7 +178,8 @@ pub fn propose(s: &mut Session, p: &Value) -> Result<Value> {
     })
 }
 fn valid(doc: &Document, a: &AiDocument, x: &Suggestion) -> bool {
-    !designcraft_ai::protected(&x.original)
+    designcraft_ai::same_layout(&x.original, &x.replacement)
+        && !designcraft_ai::protected(&x.original)
         && !designcraft_ai::protected(&x.replacement)
         && a.snapshots.get(&x.snapshot).is_some_and(|sp| {
             sp.story == x.story
@@ -226,7 +228,28 @@ fn accept(s: &mut Session, id: Option<u64>) -> Result<Value> {
     }
     s.edit(|d, sel| {
         for x in edits.iter().rev() {
-            d.story_mut(x.story).ok_or_else(|| err("unknown story"))?.replace(x.start..x.end, &x.replacement);
+            let changes = designcraft_ai::text_edits(&x.original, &x.replacement).map_err(err)?;
+            let story = d.story_mut(x.story).ok_or_else(|| err("unknown story"))?;
+            for change in changes.iter().rev() {
+                let range = x.start + change.start..x.start + change.end;
+                let formats: Vec<_> = story.text[range.clone()].char_indices().map(|(i, _)| story.format_after(range.start + i).clone()).collect();
+                let inherited = story.char_format_at(range.start).clone();
+                story.replace(range.clone(), &change.replacement);
+                let mut runs: Vec<(std::ops::Range<usize>, designcraft_doc::story::CharFormat)> = vec![];
+                for (i, (byte, c)) in change.replacement.char_indices().enumerate() {
+                    let format = formats.get(i.min(formats.len().saturating_sub(1))).unwrap_or(&inherited);
+                    if let Some((r, f)) = runs.last_mut()
+                        && f == format
+                    {
+                        r.end += c.len_utf8();
+                    } else {
+                        runs.push((range.start + byte..range.start + byte + c.len_utf8(), format.clone()));
+                    }
+                }
+                for (range, format) in runs {
+                    story.format_chars(range, |f| *f = format.clone());
+                }
+            }
         }
         let mut a = d.ai.as_deref().unwrap().clone();
         for x in &mut a.suggestions {
@@ -402,6 +425,91 @@ mod tests {
             s.execute("ai.suggestion.propose", &json!({"snapshot":r["snapshot"],"offset":0,"original":"选","replacement":"正","reason":"test"}))
                 .is_err()
         );
+    }
+    #[test]
+    fn exact_quote_localization_handles_chinese_emoji_and_wrong_offsets() {
+        let text = "选区外错字。😀这是一份测式，第二句也是测式。结束";
+        let (mut s, sid) = fixture(text);
+        let base = "选区外错字。".len();
+        s.execute("text.select", &json!({"story":sid,"anchor":base,"focus":text.len()})).unwrap();
+        let snap = s.execute("ai.text.read", &json!({})).unwrap();
+        // Repeated originals must never silently pick the first/nearest occurrence.
+        for original in ["测式", "不在原文", ""] {
+            assert!(
+                s.execute("ai.suggestion.propose", &json!({"snapshot":snap["snapshot"],"original":original,"replacement":"测试","reason":"校对"}))
+                    .is_err()
+            );
+        }
+        // The host, not the model, computes byte boundaries inside the selection.
+        for (original, replacement, offset) in [("一份测式", "一份测试", Value::Null), ("第二句也是测式", "第二句也是测试", json!(999))]
+        {
+            s.execute(
+                "ai.suggestion.propose",
+                &json!({"snapshot":snap["snapshot"],"original":original,"replacement":replacement,"offset":offset,"reason":"校对"}),
+            )
+            .unwrap();
+        }
+        s.execute("ai.suggestion.acceptAll", &json!({})).unwrap();
+        assert_eq!(s.doc().unwrap().doc.story(StoryId(sid)).unwrap().text, "选区外错字。😀这是一份测试，第二句也是测试。结束");
+        s.execute("edit.undo", &json!({})).unwrap();
+        assert_eq!(s.doc().unwrap().doc.story(StoryId(sid)).unwrap().text, text);
+        // Overlapping matches also count as ambiguous.
+        assert!(designcraft_ai::quote_offset("哈哈哈", "哈哈", None).is_err());
+    }
+    #[test]
+    fn content_only_preserves_mixed_formats_paragraphs_and_frames() {
+        let text = "错😀强调错\n另一段错\t尾";
+        let (mut s, sid) = fixture(text);
+        s.edit(|d, _| {
+            let st = d.story_mut(StoryId(sid)).unwrap();
+            for (i, (pos, c)) in text.char_indices().enumerate() {
+                st.format_chars(pos..pos + c.len_utf8(), |f| f.over.size = Some(10.0 + i as f64));
+            }
+            st.paras[1].para.space_before = Some(17.0);
+            Ok(())
+        })
+        .unwrap();
+        let before = s.doc().unwrap().doc.clone();
+        let old = before.story(StoryId(sid)).unwrap();
+        let snap = s.execute("ai.text.read", &json!({"story":sid})).unwrap();
+        for replacement in ["错😀强调错另一段错\t尾", "错😀强调错\n另一段错 尾"] {
+            assert!(
+                s.execute("ai.suggestion.propose", &json!({"snapshot":snap["snapshot"],"original":text,"replacement":replacement,"reason":"bad"}))
+                    .is_err()
+            );
+        }
+        let changed = "正😀强调对\n另一段正\t尾";
+        s.execute("ai.suggestion.propose", &json!({"snapshot":snap["snapshot"],"original":text,"replacement":changed,"reason":"校对"})).unwrap();
+        s.execute("ai.suggestion.acceptAll", &json!({})).unwrap();
+        let doc = &s.doc().unwrap().doc;
+        let st = doc.story(StoryId(sid)).unwrap();
+        assert_eq!(st.text, changed);
+        assert_eq!(st.chars, old.chars);
+        assert_eq!(st.paras, old.paras);
+        assert_eq!(st.frames, old.frames);
+        assert_eq!(serde_json::to_value(&doc.spreads).unwrap(), serde_json::to_value(&before.spreads).unwrap());
+        st.check().unwrap();
+        let bytes = designcraft_format::save(doc).unwrap();
+        let reopened = designcraft_format::load(&bytes).unwrap();
+        assert_eq!(reopened.story(StoryId(sid)).unwrap().chars, old.chars);
+        s.execute("edit.undo", &json!({})).unwrap();
+        assert_eq!(s.doc().unwrap().doc.story(StoryId(sid)).unwrap(), old);
+    }
+    #[test]
+    fn inserted_and_replaced_unicode_inherit_local_format() {
+        let (mut s, sid) = fixture("甲错乙");
+        s.execute("text.select", &json!({"story":sid,"anchor":3,"focus":6})).unwrap();
+        s.execute("type.char", &json!({"attrs":{"size":32}})).unwrap();
+        let fmt = s.doc().unwrap().doc.story(StoryId(sid)).unwrap().format_after(3).clone();
+        let id = suggestion(&mut s, sid, 0, "甲错乙", "甲正确😀乙");
+        s.execute("ai.suggestion.accept", &json!({"id":id})).unwrap();
+        let st = s.doc().unwrap().doc.story(StoryId(sid)).unwrap();
+        assert_eq!(st.text, "甲正确😀乙");
+        for pos in [3, 6, 9] {
+            assert_eq!(st.format_after(pos), &fmt);
+        }
+        assert_ne!(st.format_after(13), &fmt);
+        st.check().unwrap();
     }
     #[test]
     fn formatting_outside_trimmed_change_survives() {

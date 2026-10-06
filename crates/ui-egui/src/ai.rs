@@ -243,7 +243,7 @@ fn body(app: &mut DesignApp, ui: &mut egui::Ui) {
                 Err(e) => app.ai.notice = e,
             }
         }
-        ui.label(egui::RichText::new("正文只会在接受建议后修改。聊天和建议随文档保存。").small().color(t.text_dim));
+        ui.label(egui::RichText::new("仅修改文字，沿用已有格式；不增删段落或换行。接受后生效。").small().color(t.text_dim));
         ui.separator();
         egui::ScrollArea::vertical().id_salt(("ai_chat", uid)).auto_shrink([false, false]).stick_to_bottom(true).show(ui, |ui| {
             if data.messages.is_empty() {
@@ -501,7 +501,7 @@ mod runtime {
                         let length = text[range.clone()].chars().count();
                         let snap = app.run("ai.text.read", json!({"offset":offset,"length":length}))?;
                         ids.insert(snap["snapshot"].as_u64().unwrap());
-                        prompts.push(format!("仅校对这份选区快照中的标点和明确错别字，保留原意、数字、专名、段落与语言习惯，不确定项说明供人工核实。不要读取其他内容。使用 propose_text_change 提出修改，offset 相对于本快照的 Unicode 字符位置。快照：{}",snap));
+                        prompts.push(format!("仅校对这份选区快照中的标点和明确错别字，保留原意、数字、专名、段落与语言习惯，不确定项说明供人工核实。不要读取其他内容。使用 propose_text_change 提出修改，original 必须逐字复制快照原文；重复文字须同时在 original 和 replacement 中保留足够的相同前后文，使原文唯一。位置由程序计算，不要提供 offset。快照：{}",snap));
                     }
                     allowed = Some(ids);
                 } else {

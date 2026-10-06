@@ -13,6 +13,11 @@ DesignCraft aims at full Adobe InDesign parity — and to be better: faster, ope
   account-level acceptance; automated verification uses synthetic data.
 - Selection proofreading now treats captured snapshots as completed reads and exposes only
   the proposal tool; tool failures and zero-proposal replies no longer show a misleading success notice.
+- **2026-10-07 — Exact quote localization:** model-generated character counts are replaced by
+  host-computed positions for unique exact quotes; ambiguous repetitions require context.
+  An opt-in live regression exercises saved-provider proofreading, acceptance, undo and reopen.
+- **Content-only AI editing:** preserve existing mixed character formats, paragraph formats
+  and frames using bounded Unicode diffs; disallow changes to layout control characters.
 - Multi-reference comparison and editorial-note linking remain the next integration phase.
 - Usage, persistence format and control commands: [AI assistant](docs/ai-assistant.md).
 

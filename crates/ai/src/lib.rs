@@ -3,10 +3,30 @@
 #[cfg(not(target_arch = "wasm32"))]
 pub mod native;
 use designcraft_doc::ai::AiDocument;
+mod text_edits;
+pub use text_edits::{same_layout, text_edits};
 
 /// All model offsets count Unicode scalar values, never UTF-16 units or UTF-8 bytes.
 pub fn byte_offset(text: &str, character: usize) -> Option<usize> {
     text.char_indices().map(|(i, _)| i).chain(std::iter::once(text.len())).nth(character)
+}
+/// Resolve an exact quote inside a captured selection. Never use fuzzy or nearest matches.
+/// Explicit offsets remain available to deterministic engine clients.
+pub fn quote_offset(text: &str, original: &str, offset: Option<usize>) -> Result<usize, String> {
+    if let Some(start) = offset.and_then(|n| byte_offset(text, n))
+        && text[start..].starts_with(original)
+    {
+        return Ok(start);
+    }
+    if original.is_empty() {
+        return Err("插入建议必须提供准确位置，或在 original 和 replacement 中包含相同的邻近原文。".into());
+    }
+    let mut matches = text.char_indices().filter_map(|(i, _)| text[i..].starts_with(original).then_some(i));
+    let first = matches.next().ok_or("快照中找不到完全一致的原文，请直接复制快照中的文字（包括标点、空格和换行）。")?;
+    if matches.next().is_some() {
+        return Err("原文在快照中出现多次，请在 original 和 replacement 中包含相同的前后文，使原文唯一；不要猜测位置。".into());
+    }
+    Ok(first)
 }
 pub fn protected(text: &str) -> bool {
     text.chars().any(|c| ('\u{e000}'..='\u{f8ff}').contains(&c) || c == '\u{fffc}')
