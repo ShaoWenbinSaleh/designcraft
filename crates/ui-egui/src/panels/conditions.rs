@@ -28,7 +28,9 @@ pub fn show(app: &mut DesignApp, ui: &mut egui::Ui) {
         let (row, _) = ui.allocate_exact_size(vec2(ui.available_width(), 22.0), Sense::hover());
         // Visibility (eye).
         let eye = egui::Rect::from_min_size(row.min + vec2(2.0, 3.0), vec2(16.0, 16.0));
-        let er = ui.interact(eye, ui.id().with(("cond_eye", &c.name)), Sense::click()).on_hover_text("Show / hide text with this condition");
+        let er = ui.interact(eye, ui.id().with(("cond_eye", &c.name)), Sense::click()).on_hover_ui(|ui| {
+            crate::rtl::label(ui, crate::i18n::tr(&app.ui.language, "Show / hide text with this condition"));
+        });
         if c.visible {
             crate::icons::paint(ui.painter(), eye, "eye", t.text_dim);
         }
@@ -73,7 +75,11 @@ pub fn show(app: &mut DesignApp, ui: &mut egui::Ui) {
     let id = egui::Id::new("new_condition_name");
     let mut name: String = ui.data(|d| d.get_temp(id)).unwrap_or_default();
     ui.horizontal(|ui| {
-        ui.add(egui::TextEdit::singleline(&mut name).hint_text("New condition name").desired_width(150.0));
+        ui.add(
+            egui::TextEdit::singleline(&mut name)
+                .hint_text(crate::rtl::widget(ui, crate::i18n::tr(&app.ui.language, "New condition name")))
+                .desired_width(150.0),
+        );
         if ui.button(crate::rtl::widget(ui, crate::i18n::tr(&app.ui.language, "New"))).clicked() && !name.trim().is_empty() {
             match app.run("condition.new", json!({"name": name.trim()})) {
                 Ok(_) => name.clear(),
