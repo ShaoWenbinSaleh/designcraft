@@ -4,10 +4,12 @@
 //! `layout.pages.insert`…) and JSON parameters. The egui UI, the CLI, the control channel and MCP
 //! all go through [`Session::execute`]. Tools (pointer gestures) are hosted here and reduce to
 //! commands, so every gesture is journaled and replayable.
+#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 #![forbid(unsafe_code)]
 
 pub mod cmd;
 pub mod dtd;
+pub mod guard;
 pub mod links;
 pub mod math;
 pub mod recovery;
@@ -25,7 +27,7 @@ pub use cmd::{CommandInfo, CommandSpec, command_specs, find_command};
 pub use designcraft_compose as compose;
 pub use designcraft_doc as doc;
 pub use designcraft_tools as tools;
-pub use tooling::{UiRequest, ViewInfo};
+pub use tooling::{SnapView, UiRequest, ViewInfo};
 
 #[derive(Debug, thiserror::Error)]
 pub enum EngineError {
@@ -39,6 +41,9 @@ pub enum EngineError {
     NoDocument,
     #[error("{0}")]
     Other(String),
+    /// A command panicked; the guard kept the document (a bug: please report it).
+    #[error("internal error in `{0}` (the document was kept as it was): {1}")]
+    Internal(String, String),
 }
 
 impl From<designcraft_doc::DocError> for EngineError {
@@ -253,6 +258,7 @@ impl Default for Session {
 
 impl Session {
     pub fn new() -> Self {
+        guard::install_panic_hook();
         Session {
             docs: vec![],
             active: None,
@@ -340,11 +346,33 @@ impl Session {
     }
 
     /// Run a command by id. Edits push one undo step (unless inside an interaction).
+    /// Run command `id`. A panic inside it becomes [`EngineError::Internal`] and leaves the
+    /// document as it was (see [`guard`]).
     pub fn execute(&mut self, id: &str, params: &Value) -> Result<Value> {
+        self.guarded(id, |s| s.execute_unguarded(id, params))
+    }
+
+    fn execute_unguarded(&mut self, id: &str, params: &Value) -> Result<Value> {
         let spec = find_command(id).ok_or_else(|| EngineError::UnknownCommand(id.into()))?;
-        (spec.enabled)(self).map_err(|e| EngineError::Disabled(id.into(), e))?;
+        if let Err(e) = (spec.enabled)(self) {
+            // A command that takes `ids` acts on the objects the call names, so it needs no
+            // selection: with a text caret or nothing selected, `{"ids": [5]}` still runs.
+            let named = if e == cmd::NOTHING_SELECTED { cmd::named_targets(spec, params) } else { None };
+            let Some(ids) = named else { return Err(EngineError::Disabled(id.into(), e)) };
+            let st = self.doc()?;
+            if let Some(gone) = ids.iter().find(|i| st.doc.item(**i).is_none()) {
+                return Err(EngineError::Disabled(id.into(), format!("no object with id {}", gone.0)));
+            }
+        }
         let before = self.active().map(|d| (d.uid, d.doc.clone()));
         let r = (spec.run)(self, params)?;
+        // Undo, redo or deleting layers can take the active layer away: new objects would land on
+        // a layer that isn't there (invisible, not exported). Fall back to the top layer.
+        if let Some(st) = self.active_mut()
+            && st.doc.layer(st.active_layer).is_none()
+        {
+            st.active_layer = st.doc.default_layer();
+        }
         self.record_transform(id, params);
         if self.prefs.smart_text_reflow && spec.undoable {
             self.smart_reflow();
@@ -400,7 +428,7 @@ impl Session {
                 if story.frames.len() < 2 {
                     break;
                 }
-                let last = *story.frames.last().expect("frames");
+                let Some(&last) = story.frames.last() else { break };
                 let cs = designcraft_compose::compose_story(&d, sid, &Default::default());
                 if cs.frame(last).is_some_and(|ft| !ft.range.is_empty()) {
                     break;

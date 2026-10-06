@@ -58,6 +58,9 @@ impl Default for ParaFormat {
     }
 }
 
+/// The format a story without runs reports (a valid story always has one run).
+static NO_FORMAT: std::sync::LazyLock<CharFormat> = std::sync::LazyLock::new(CharFormat::default);
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CharFormat {
@@ -186,7 +189,7 @@ impl Story {
             }
             start = end;
         }
-        &self.chars.last().expect("at least one run").format
+        self.chars.last().map_or(&NO_FORMAT, |r| &r.format)
     }
 
     /// Iterate `(range, format)` of character runs.
@@ -310,7 +313,7 @@ impl Story {
             }
             start += r.len;
         }
-        &self.chars.last().expect("run").format
+        self.chars.last().map_or(&NO_FORMAT, |r| &r.format)
     }
 
     /// Apply `f` to the character format of every run intersecting `range` (splitting runs at the

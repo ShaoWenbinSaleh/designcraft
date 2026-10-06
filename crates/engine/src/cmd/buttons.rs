@@ -46,9 +46,7 @@ pub fn specs() -> Vec<CommandSpec> {
             }
         ),
         cmd!("button.clear", "Convert to Object", ["Object", "Interactive"], None, "{ids?}", has_selection, |s, p| {
-            let mut q = p.clone();
-            q["action"] = json!("none");
-            s.execute("button.set", &q)
+            s.execute("button.set", &super::with_param(p, "action", json!("none")))
         }),
         cmd!(
             "form.set",

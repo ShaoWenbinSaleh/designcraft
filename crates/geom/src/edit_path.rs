@@ -120,8 +120,10 @@ pub fn smooth(sp: &SubPath, a: At, b: At, tol: f64) -> SubPath {
     let mut out = tidy(head);
     if sp.closed {
         // The walk repeated the first anchor at the end.
-        if out.len() > 2 && (out[0].p - out[out.len() - 1].p).hypot() < 1e-6 {
-            let last = out.pop().expect("len");
+        if out.len() > 2
+            && (out[0].p - out[out.len() - 1].p).hypot() < 1e-6
+            && let Some(last) = out.pop()
+        {
             out[0].h_in = last.h_in;
         }
     }

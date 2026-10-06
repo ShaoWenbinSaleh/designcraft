@@ -362,8 +362,10 @@ fn document_sections(app: &mut DesignApp, ui: &mut Ui) {
     if guides != app.ui.guides {
         let _ = app.run("view.guides", json!({}));
     }
+    if smart != app.ui.smart_guides {
+        let _ = app.run("view.smartGuides", json!({}));
+    }
     app.ui.guides_locked = locked;
-    app.ui.smart_guides = smart;
     rule(ui);
     section(ui, crate::i18n::tr(&app.ui.language, "Quick Actions"), true);
     let (a, b) = button_pair(ui, crate::i18n::tr(&app.ui.language, "Import File"), crate::i18n::tr(&app.ui.language, "Insert Page"));
@@ -846,7 +848,7 @@ fn text_style_section(app: &mut DesignApp, ui: &mut Ui) {
     }
     ui.add_space(5.0);
     let (names, cur): (Vec<String>, String) = {
-        let st = app.session.active().expect("doc");
+        let Some(st) = app.session.active() else { return };
         if tab == 0 {
             (
                 st.doc.styles.paragraph.iter().map(|p| p.name.clone()).filter(|n| n != designcraft_doc::NO_PARA_STYLE).collect(),

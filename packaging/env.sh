@@ -50,6 +50,17 @@ copy_docs() {
   for f in README.md LICENSE LICENSE-MIT LICENSE-APACHE COPYRIGHT; do
     if [ -f "$ROOT/$f" ]; then cp "$ROOT/$f" "$dest/"; fi
   done
+  copy_font_licences "$dest"
+}
+
+# Builds made with craft-fonts (CRAFT_FONTS_DIR, set by the release workflow) embed its fonts, so
+# the package carries their licences as OFL-<family-dir>.txt. Nothing without CRAFT_FONTS_DIR.
+copy_font_licences() {
+  local dest="$1" f
+  [ -n "${CRAFT_FONTS_DIR:-}" ] || return 0
+  for f in "$CRAFT_FONTS_DIR"/fonts/*/OFL.txt; do
+    if [ -f "$f" ]; then cp "$f" "$dest/OFL-$(basename "$(dirname "$f")").txt"; fi
+  done
 }
 
 # Portable SHA-256 of a file (prints just the hash).

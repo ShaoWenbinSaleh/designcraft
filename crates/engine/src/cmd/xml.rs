@@ -152,7 +152,7 @@ fn parse(xml: &str) -> std::result::Result<Vec<Element>, String> {
                             _ => String::new(),
                         },
                     },
-                    _ => unreachable!(),
+                    _ => String::new(),
                 };
                 match (depth, child.as_mut(), out.last_mut()) {
                     (3, Some(c), _) => c.1.push_str(&s),

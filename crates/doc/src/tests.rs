@@ -100,3 +100,15 @@ fn document_serde_roundtrip() {
     assert_eq!(d, back);
     back.check().unwrap();
 }
+
+/// A file can set `next_id` to `u64::MAX`; the next allocated id then overflowed (IDML export
+/// adds to it too). Such a document is rejected when it is checked on load.
+#[test]
+fn next_id_near_the_top_is_rejected() {
+    let mut d = Document::new(&crate::build::NewDocument::default());
+    d.check().unwrap();
+    d.next_id = u64::MAX;
+    assert!(d.check().is_err());
+    d.next_id = crate::MAX_NEXT_ID;
+    d.check().unwrap();
+}

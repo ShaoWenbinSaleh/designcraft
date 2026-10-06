@@ -697,6 +697,18 @@ fn preferences(app: &crate::DesignApp, ui: &mut egui::Ui, d: &mut Dialog) {
                         text_field(ui, d, "pasteboard.v", 80.0);
                         ui.end_row();
                     });
+                    ui.add_space(6.0);
+                    check(ui, d, "snap.alignEdges", "Align to Object Edges");
+                    check(ui, d, "snap.alignCenters", "Align to Object Centers");
+                    check(ui, d, "snap.dimensions", "Smart Dimensions");
+                    check(ui, d, "snap.spacing", "Smart Spacing");
+                    ui.horizontal(|ui| {
+                        ui.label("Snap to Zone");
+                        let mut zone = d.n("snap.zone").filter(|z| z.is_finite()).unwrap_or(4.0);
+                        if ui.add(egui::DragValue::new(&mut zone).speed(0.1)).changed() {
+                            d.fields.insert("snap.zone".into(), json!(zone));
+                        }
+                    });
                 }
                 "display" => {
                     crate::rtl::label(ui, egui::RichText::new(crate::i18n::tr(&app.ui.language, "Options")).font(semibold(12.0)));
@@ -1523,6 +1535,18 @@ pub fn confirm(app: &mut DesignApp) -> Result<Value, String> {
             if let Some(v) = d.n("uiScale") {
                 app.run("window.uiScale", json!({"scale": v / 100.0}))?;
             }
+            if d.fields.contains_key("snap.alignEdges") {
+                let mut snap = json!({
+                    "alignEdges": d.b("snap.alignEdges"),
+                    "alignCenters": d.b("snap.alignCenters"),
+                    "smartDimensions": d.b("snap.dimensions"),
+                    "smartSpacing": d.b("snap.spacing"),
+                });
+                if let Some(zone) = d.n("snap.zone") {
+                    snap["zone"] = json!(zone);
+                }
+                app.run("view.snapPreferences", snap)?;
+            }
             if !d.fields.contains_key("horizontalUnits") {
                 return Ok(Value::Null);
             }
@@ -1585,8 +1609,7 @@ pub fn confirm(app: &mut DesignApp) -> Result<Value, String> {
         "qrCode" => {
             let mut p = Value::Object(d.fields.clone());
             // Nothing selected: a 2-inch code at the top left of the page in view.
-            if app.session.active().is_some_and(|s| s.selection.items.is_empty()) {
-                let st = app.session.active().expect("doc");
+            if let Some(st) = app.session.active().filter(|s| s.selection.items.is_empty()) {
                 let abs = crate::canvas::current_page(app).unwrap_or(0);
                 let (si, pi) = st.doc.page_loc(abs).unwrap_or((0, 0));
                 let x = st.doc.spreads.get(si).and_then(|sp| sp.pages.get(pi)).map_or(0.0, |pg| pg.x);

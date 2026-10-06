@@ -47,7 +47,8 @@ pub fn import_idml_with(bytes: &[u8], read_link: &dyn Fn(&str) -> Option<Vec<u8>
             continue;
         }
         let name = f.name().to_string();
-        let mut buf = Vec::with_capacity(f.size() as usize);
+        // The size is what the archive claims: don't reserve more than a sane part up front.
+        let mut buf = Vec::with_capacity((f.size() as usize).min(1 << 24));
         f.read_to_end(&mut buf).map_err(|e| IdmlError::Part { part: name.clone(), msg: e.to_string() })?;
         files.insert(name, buf);
     }
@@ -1357,7 +1358,7 @@ impl<'r> Importer<'r> {
         }
         let h = e.num("HeaderRowCount").unwrap_or(0.0) as usize;
         let f = e.num("FooterRowCount").unwrap_or(0.0) as usize;
-        if h + f < nr {
+        if h.saturating_add(f) < nr {
             t.set_header_footer(h, f);
         }
         let stroke = |me: &mut Self, el: &El, prefix: &str, base: &CellStroke| -> CellStroke {

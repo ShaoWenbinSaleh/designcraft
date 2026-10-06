@@ -339,7 +339,7 @@ fn emit(
             } else {
                 None
             };
-            let lay = layouts[r * nc + c].as_ref().expect("owner composed");
+            let Some(lay) = layouts.get(r * nc + c).and_then(Option::as_ref) else { continue };
             let clip = Rect::new(rect.x0 + cell.insets[1], rect.y0 + cell.insets[0], rect.x1 - cell.insets[3], rect.y1 - cell.insets[2]);
             let space = clip.height() - lay.content_h;
             let dy = match cell.vj {

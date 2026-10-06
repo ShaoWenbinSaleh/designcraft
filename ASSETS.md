@@ -2,7 +2,7 @@
 
 Every non-code asset in this repository (fonts, images, example art, presets) is listed here with its author, source and licence. `cargo xtask assets` (part of `cargo xtask ci`) fails if an asset file is missing from this table.
 
-**Policy (mandatory):** DesignCraft contains **no Adobe iconography, images, artwork, presets, swatch libraries or ICC profiles**. Every asset is original work by DesignCraft contributors or third-party material under an open licence (OSI open source, public domain / CC0, or Creative Commons that allows redistribution). Screenshots of Adobe software are never committed.
+**Policy (mandatory):** DesignCraft contains **no Adobe iconography, images, artwork, presets, swatch libraries or ICC profiles**. Every asset is original work by DesignCraft contributors or third-party material under an open licence (OSI open source, public domain / CC0, or Creative Commons that allows redistribution). Screenshots of Adobe software are never committed. Font files are not added here: shared fonts live in [storytold/craft-fonts](https://github.com/storytold/craft-fonts), an optional build input (`CRAFT_FONTS_DIR`, see AGENTS.md and craftrules [`standards/fonts.md`](https://github.com/storytold/craftrules/blob/main/standards/fonts.md)). The one exception is the ArtCraft brand files in `docs/brand/`: ArtCraft trademarks, not open source, used under `docs/brand/LICENSE-brand.txt`.
 
 Generated-in-code art is original and has no file to list: the UI icon set (`crates/ui-egui/src/icons.rs`), default swatches, and the sample magazine's imagery (`crates/engine/src/sample.rs`).
 
@@ -27,6 +27,7 @@ Generated-in-code art is original and has no file to list: the UI icon set (`cra
 | `assets/fonts/SourceSerif4-It.ttf` | Frank Grießhammer / Adobe (released as open source) | https://github.com/adobe-fonts/source-serif | OFL-1.1 (`assets/fonts/OFL-SourceSerif4.txt`) | Open-source typeface |
 | `assets/fonts/SourceSerif4-Regular.ttf` | Frank Grießhammer / Adobe (released as open source) | https://github.com/adobe-fonts/source-serif | OFL-1.1 (`assets/fonts/OFL-SourceSerif4.txt`) | Open-source typeface |
 | `assets/fonts/SourceSerif4-Semibold.ttf` | Frank Grießhammer / Adobe (released as open source) | https://github.com/adobe-fonts/source-serif | OFL-1.1 (`assets/fonts/OFL-SourceSerif4.txt`) | Open-source typeface |
+| craft-fonts (optional build input, not files in this repo): BIZ UDPGothic, BIZ UDMincho, Shippori Mincho | see https://github.com/storytold/craft-fonts/blob/main/ATTRIBUTION.md | https://github.com/storytold/craft-fonts, embedded only when built with `CRAFT_FONTS_DIR` (all official releases; web builds embed BIZ UDPGothic Regular only) | OFL-1.1 (licence texts ship in packages as `OFL-<family>.txt`) | Japanese UI and document fallback |
 | `docs/images/page-2.png` | DesignCraft contributors | screenshot/render of DesignCraft itself (sample document generated in code) | MIT OR Apache-2.0 | Original; no Adobe UI |
 | `docs/images/page-3.png` | DesignCraft contributors | screenshot/render of DesignCraft itself (sample document generated in code) | MIT OR Apache-2.0 | Original; no Adobe UI |
 | `docs/images/page-4.png` | DesignCraft contributors | screenshot/render of DesignCraft itself (sample document generated in code) | MIT OR Apache-2.0 | Original; no Adobe UI |

@@ -2651,4 +2651,18 @@ mod tests {
             assert!(t.iter().all(|x| !x.is_empty()), "{en}");
         }
     }
+
+    #[test]
+    fn japanese_vertical_type_commands_are_translated() {
+        for (en, ja) in [
+            ("Story Direction", "組み方向"),
+            ("Horizontal", "横書き"),
+            ("Vertical", "縦書き"),
+            ("Tate-Chu-Yoko", "縦中横"),
+            ("Ruby…", "ルビ…"),
+            ("Kenten", "圏点"),
+        ] {
+            assert_eq!(tr("ja", en), ja);
+        }
+    }
 }

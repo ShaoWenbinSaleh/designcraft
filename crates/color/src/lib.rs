@@ -2,6 +2,7 @@
 //!
 //! Colours keep the model the user picked them in (RGB, CMYK, Gray, HSB is a UI view of RGB), so
 //! documents don't drift when converting back and forth. Rendering asks for [`Color::to_rgba`].
+#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 #![forbid(unsafe_code)]
 
 pub mod ase;

@@ -148,7 +148,8 @@ impl Document {
                 for &i in &loc.path[1..loc.path.len() - 1] {
                     it = Arc::make_mut(&mut it.children_mut().ok_or(DocError::NoItem(id))?[i]);
                 }
-                it.children_mut().ok_or(DocError::NoItem(id))?.remove(*loc.path.last().expect("non-empty"))
+                let last = *loc.path.last().ok_or(DocError::NoItem(id))?;
+                it.children_mut().ok_or(DocError::NoItem(id))?.remove(last)
             }
         };
         let mut frames = Vec::new();

@@ -117,10 +117,13 @@ fn select_sibling(s: &mut Session, dir: isize) -> Result<Value> {
     let Some(parent) = st.doc.item_at(&pl) else { return ok() };
     let kids = parent.children();
     let n = kids.len() as isize;
-    let i = *l.path.last().expect("nested") as isize;
+    let Some(&i) = l.path.last() else { return ok() };
+    if n == 0 {
+        return ok();
+    }
     // InDesign's "next" goes down the stack (towards the back), wrapping.
-    let j = (i - dir).rem_euclid(n) as usize;
-    let next = kids[j].id;
+    let j = (i as isize - dir).rem_euclid(n) as usize;
+    let Some(next) = kids.get(j).map(|k| k.id) else { return ok() };
     st.selection = Selection::items(vec![next]);
     st.revision += 1;
     Ok(json!({"id": next.0}))

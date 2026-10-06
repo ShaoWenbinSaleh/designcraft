@@ -35,6 +35,7 @@
 //!   basic feather, EPS/PDF/AI placed graphics (imported as images when the data is available),
 //!   clipping paths, compound-path fill rules.
 //! - Unknown elements are ignored; nothing is preserved opaquely for round-trip yet.
+#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 mod export;
 mod import;

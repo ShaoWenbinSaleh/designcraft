@@ -342,7 +342,7 @@ impl Styles {
         if !existing(base) {
             return base.to_string();
         }
-        (2..).map(|i| format!("{base} {i}")).find(|n| !existing(n)).expect("infinite")
+        (2..=usize::MAX).map(|i| format!("{base} {i}")).find(|n| !existing(n)).unwrap_or_else(|| format!("{base} copy"))
     }
 }
 

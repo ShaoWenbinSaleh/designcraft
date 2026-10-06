@@ -1,12 +1,15 @@
+use std::sync::Arc;
+
 use designcraft_compose::Cache;
 use designcraft_doc::build::NewDocument;
-use designcraft_doc::{Document, ParaFormat, Selection, SpreadRef};
-use designcraft_geom::Rect;
+use designcraft_doc::{Document, Guide, Item, ItemId, Orientation, ParaFormat, Selection, Shape, SpreadRef, Stroke};
+use designcraft_geom::shapes;
+use designcraft_geom::{Point, Rect, Unit};
 
 use super::*;
 
 fn ctx<'a>(d: &'a Document, s: &'a Selection, c: &'a Cache, l: &'a CanvasLayout) -> ToolContext<'a> {
-    ToolContext { doc: d, selection: s, cache: c, layout: l, zoom: 1.0, layer: d.default_layer(), snap: false }
+    ToolContext { doc: d, selection: s, cache: c, layout: l, zoom: 1.0, layer: d.default_layer(), snap: SnapView::OFF, unit: Unit::Points }
 }
 
 #[test]
@@ -291,4 +294,414 @@ fn turned_spread_maps_points_both_ways() {
     // A canvas drag rightwards is a drag down the spread.
     let dv = slot.delta_to_spread(designcraft_geom::Vec2::new(10.0, 0.0));
     assert!(dv.x.abs() < 1e-9 && (dv.y + 10.0).abs() < 1e-9 || (dv.y - 10.0).abs() < 1e-9, "{dv:?}");
+}
+
+fn add_rect(doc: &mut Document, rect: Rect) -> ItemId {
+    let layer = doc.default_layer();
+    let id = ItemId(doc.alloc());
+    let item = Item::new(id, layer, Shape::Rectangle, shapes::rectangle(rect));
+    doc.insert_item(SpreadRef::Doc(0), item, None).unwrap();
+    id
+}
+
+/// Dimensions on, ruler guides and the document grid off. Alignment is optional.
+fn dims_ctx<'a>(d: &'a Document, s: &'a Selection, c: &'a Cache, l: &'a CanvasLayout, align: bool) -> ToolContext<'a> {
+    let mut cx = ctx(d, s, c, l);
+    cx.snap = SnapView::FACTORY;
+    cx.snap.snap_to_guides = false;
+    cx.snap.snap_to_document_grid = false;
+    cx.snap.align_edges = align;
+    cx.snap.align_centers = align;
+    cx
+}
+
+fn spread_pt(l: &CanvasLayout, x: f64, y: f64) -> Point {
+    l.to_canvas(SpreadRef::Doc(0), Point::new(x, y))
+}
+
+fn near(a: Point, b: Point) -> bool {
+    (a.x - b.x).abs() < 1e-4 && (a.y - b.y).abs() < 1e-4
+}
+
+fn guide_matches(overlays: &[Overlay], a: Point, b: Point) -> bool {
+    overlays.iter().any(|o| match o {
+        Overlay::Guide { a: ga, b: gb } => (near(*ga, a) && near(*gb, b)) || (near(*ga, b) && near(*gb, a)),
+        _ => false,
+    })
+}
+
+fn guide_list(overlays: &[Overlay]) -> String {
+    overlays
+        .iter()
+        .filter_map(|o| match o {
+            Overlay::Guide { a, b } => Some(format!("({:.4},{:.4})-({:.4},{:.4})", a.x, a.y, b.x, b.y)),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("; ")
+}
+
+#[test]
+fn shift_alt_resize_keeps_aspect_and_center() {
+    // 100 by 50, center (150, 125), aspect 2. Corner handle, Shift and Alt.
+    // The centered width is 160. Another item's side is 163, inside the zone.
+    let mut doc = Document::new(&NewDocument::default());
+    let moving = add_rect(&mut doc, Rect::new(100.0, 100.0, 200.0, 150.0));
+    add_rect(&mut doc, Rect::new(400.0, 400.0, 563.0, 430.0));
+    let sel = Selection::items(vec![moving]);
+    let cache = Cache::new();
+    let layout = CanvasLayout::new(&doc, false);
+    let cx = dims_ctx(&doc, &sel, &cache, &layout, false);
+    let mut t = create("selection");
+    let mods = Mods { shift: true, alt: true, ..Mods::default() };
+    let down = spread_pt(&layout, 200.0, 150.0);
+    let drag = spread_pt(&layout, 230.0, 155.0);
+    t.pointer(&cx, &PointerEvent::new(PointerKind::Down, down.x, down.y).with_mods(mods));
+    let a = t.pointer(&cx, &PointerEvent::new(PointerKind::Drag, drag.x, drag.y).with_mods(mods));
+    let params = match &a[..] {
+        [Action::Preview(cmd, p)] => {
+            assert_eq!(cmd, "transform.resize");
+            p
+        }
+        other => panic!("{other:?}"),
+    };
+    let to = params["to"].as_array().unwrap();
+    let (x0, y0, x1, y1) = (to[0].as_f64().unwrap(), to[1].as_f64().unwrap(), to[2].as_f64().unwrap(), to[3].as_f64().unwrap());
+    let (w, h) = (x1 - x0, y1 - y0);
+    let (cx0, cy0) = ((x0 + x1) / 2.0, (y0 + y1) / 2.0);
+    assert!((cx0 - 150.0).abs() < 1e-4 && (cy0 - 125.0).abs() < 1e-4, "center walked to ({cx0}, {cy0}) rect {to:?}");
+    assert!((w / h - 2.0).abs() < 1e-4, "aspect {} rect {to:?}", w / h);
+    assert!((w - 163.0).abs() < 1e-4, "driving length {w}, want the matched 163, not twice the correction");
+}
+
+#[test]
+fn line_length_keeps_the_crossed_guide() {
+    // Diagonal from (100, 100) to (180, 140). Length is about 89.44, near a 92 side.
+    // Endpoint y is 2 pt from the other item's top, so Y is a position snap and X is the length.
+    let mut doc = Document::new(&NewDocument::default());
+    add_rect(&mut doc, Rect::new(400.0, 142.0, 492.0, 180.0));
+    let sel = Selection::default();
+    let cache = Cache::new();
+    let layout = CanvasLayout::new(&doc, false);
+    let cx = dims_ctx(&doc, &sel, &cache, &layout, true);
+    let mut t = create("line");
+    let a = spread_pt(&layout, 100.0, 100.0);
+    let b = spread_pt(&layout, 180.0, 140.0);
+    t.pointer(&cx, &PointerEvent::new(PointerKind::Down, a.x, a.y));
+    let actions = t.pointer(&cx, &PointerEvent::new(PointerKind::Drag, b.x, b.y));
+    let params = actions
+        .iter()
+        .find_map(|act| match act {
+            Action::Preview(cmd, p) if cmd == "line.create" => Some(p),
+            _ => None,
+        })
+        .unwrap();
+    let end = params["b"].as_array().unwrap();
+    let (bx, by) = (end[0].as_f64().unwrap(), end[1].as_f64().unwrap());
+    let len = 80.0_f64.hypot(40.0);
+    let target = 92.0_f64;
+    let dy = 142.0 - 100.0;
+    // Y stays on the guide. X is solved so the segment length is 92, not by adding the difference to x.
+    let remain = target * target - dy * dy;
+    let expect_x = 100.0 + remain.sqrt();
+    assert!((by - 142.0).abs() < 1e-4, "endpoint y {by} left the guide at 142 (x {bx})");
+    assert!((bx - expect_x).abs() < 1e-4, "endpoint x {bx}, want {expect_x}");
+    let got = (bx - 100.0).hypot(by - 100.0);
+    assert!((got - target).abs() < 1e-4, "length {got}, raw was {len}");
+    assert!((bx - (180.0 + (target - len))).abs() > 0.1, "x still took the raw length difference");
+}
+
+#[test]
+fn stroked_move_aligns_visible_edges() {
+    // 2 pt centered strokes. The other path ends at 70, so its visible edge is 71.
+    // A geometric move would land the path on 71. The visible edge must land there instead.
+    let mut doc = Document::new(&NewDocument::default());
+    let layer = doc.default_layer();
+    let stroke = Stroke { weight: 2.0, ..Stroke::default() };
+    let make = |doc: &mut Document, rect: Rect| {
+        let id = ItemId(doc.alloc());
+        let mut item = Item::new(id, layer, Shape::Rectangle, shapes::rectangle(rect));
+        item.stroke = stroke.clone();
+        doc.insert_item(SpreadRef::Doc(0), item, None).unwrap();
+        id
+    };
+    let _other = make(&mut doc, Rect::new(40.0, 100.0, 70.0, 140.0));
+    let moving = make(&mut doc, Rect::new(100.0, 100.0, 160.0, 140.0));
+    let sel = Selection::items(vec![moving]);
+    let cache = Cache::new();
+    let layout = CanvasLayout::new(&doc, false);
+    let cx = dims_ctx(&doc, &sel, &cache, &layout, true);
+    let mut t = create("selection");
+    let down = spread_pt(&layout, 130.0, 120.0);
+    let drag = spread_pt(&layout, 103.0, 120.0);
+    t.pointer(&cx, &PointerEvent::new(PointerKind::Down, down.x, down.y));
+    let actions = t.pointer(&cx, &PointerEvent::new(PointerKind::Drag, drag.x, drag.y));
+    let dx = match actions.last() {
+        Some(Action::Preview(cmd, p)) => {
+            assert_eq!(cmd, "transform.move");
+            p["dx"].as_f64().unwrap()
+        }
+        other => panic!("{other:?}"),
+    };
+    assert!((dx - -28.0).abs() < 1e-4, "dx {dx}, want -28 so the visible edge meets 71");
+}
+
+#[test]
+fn vertical_line_length_matches_along_the_segment() {
+    // Vertical, length 80, near a 84 side. The match must move y, not add 4 to x.
+    let mut doc = Document::new(&NewDocument::default());
+    add_rect(&mut doc, Rect::new(400.0, 400.0, 450.0, 484.0));
+    let sel = Selection::default();
+    let cache = Cache::new();
+    let layout = CanvasLayout::new(&doc, false);
+    let cx = dims_ctx(&doc, &sel, &cache, &layout, false);
+    let mut t = create("line");
+    let a = spread_pt(&layout, 100.0, 100.0);
+    let b = spread_pt(&layout, 100.0, 180.0);
+    t.pointer(&cx, &PointerEvent::new(PointerKind::Down, a.x, a.y));
+    let actions = t.pointer(&cx, &PointerEvent::new(PointerKind::Drag, b.x, b.y));
+    let params = actions
+        .iter()
+        .find_map(|act| match act {
+            Action::Preview(cmd, p) if cmd == "line.create" => Some(p),
+            _ => None,
+        })
+        .unwrap();
+    let end = params["b"].as_array().unwrap();
+    let (bx, by) = (end[0].as_f64().unwrap(), end[1].as_f64().unwrap());
+    assert!((bx - 100.0).abs() < 1e-4, "x moved to {bx}");
+    assert!((by - 184.0).abs() < 1e-4, "y {by}, want 184");
+    let xf = layout.xf(SpreadRef::Doc(0));
+    let seg = (xf * Point::new(100.0, 100.0), xf * Point::new(100.0, 184.0));
+    let overlays = t.overlays(&cx);
+    assert!(guide_matches(&overlays, seg.0, seg.1), "guide is not the segment [{}]", guide_list(&overlays));
+}
+
+#[test]
+fn shift_frame_stays_square_on_the_driving_guide() {
+    // Pointer dx is larger, so x drives. The square's right edge is 3 pt from the guide at 203.
+    // Y must follow that snapped size, not stay at the unconstrained square.
+    let mut doc = Document::new(&NewDocument::default());
+    doc.settings.baseline_grid.increment = 0.0;
+    Arc::make_mut(&mut doc.spreads[0]).pages[0].guides.push(Guide {
+        orientation: Orientation::Vertical,
+        position: 203.0,
+        spread: true,
+        locked: false,
+        layer: None,
+        liquid: false,
+    });
+    let sel = Selection::default();
+    let cache = Cache::new();
+    let layout = CanvasLayout::new(&doc, false);
+    let mut cx = ctx(&doc, &sel, &cache, &layout);
+    cx.snap = SnapView::FACTORY;
+    cx.snap.snap_to_document_grid = false;
+    cx.snap.smart_dimensions = false;
+    let mut t = create("rectangle");
+    let mods = Mods { shift: true, ..Mods::default() };
+    let a = spread_pt(&layout, 120.0, 120.0);
+    let b = spread_pt(&layout, 200.0, 150.0);
+    t.pointer(&cx, &PointerEvent::new(PointerKind::Down, a.x, a.y).with_mods(mods));
+    let actions = t.pointer(&cx, &PointerEvent::new(PointerKind::Drag, b.x, b.y).with_mods(mods));
+    let rect = actions
+        .iter()
+        .find_map(|act| match act {
+            Action::Preview(cmd, p) if cmd == "frame.create" => p["rect"].as_array(),
+            _ => None,
+        })
+        .unwrap();
+    let (x0, y0, x1, y1) = (rect[0].as_f64().unwrap(), rect[1].as_f64().unwrap(), rect[2].as_f64().unwrap(), rect[3].as_f64().unwrap());
+    assert!((x1 - 203.0).abs() < 1e-4, "driving edge {x1} left the guide");
+    assert!((y1 - y0 - (x1 - x0)).abs() < 1e-4, "not square: {x0} {y0} {x1} {y1}");
+    assert!((y1 - 203.0).abs() < 1e-4, "other edge {y1} did not follow the snapped size");
+}
+
+#[test]
+fn drag_onto_the_next_spread_snaps_to_that_guide() {
+    // The origin spread has a guide 4 pt from the unsnapped top. The destination guide is 2 pt away.
+    // Snapping on the origin would move by 4. Snapping under the pointer moves by 2.
+    let mut doc = Document::new(&NewDocument { pages: 2, facing_pages: false, ..NewDocument::default() });
+    doc.settings.baseline_grid.increment = 0.0;
+    let id = add_rect(&mut doc, Rect::new(100.0, 100.0, 160.0, 140.0));
+    let guide = |position: f64| Guide { orientation: Orientation::Horizontal, position, spread: true, locked: false, layer: None, liquid: false };
+    Arc::make_mut(&mut doc.spreads[1]).pages[0].guides.push(guide(52.0));
+    let sel = Selection::items(vec![id]);
+    let cache = Cache::new();
+    let layout = CanvasLayout::new(&doc, false);
+    assert_eq!(layout.slots.len(), 2);
+    let item = Rect::new(100.0, 100.0, 160.0, 140.0);
+    let raw_top = 50.0;
+    let corner0 = layout.to_canvas(SpreadRef::Doc(0), Point::new(item.x0, item.y0));
+    let corner_raw = layout.to_canvas(SpreadRef::Doc(1), Point::new(item.x0, raw_top));
+    let travel = designcraft_geom::Vec2::new(corner_raw.x - corner0.x, corner_raw.y - corner0.y);
+    let origin_top = item.y0 + layout.delta_to_spread(SpreadRef::Doc(0), travel).y;
+    Arc::make_mut(&mut doc.spreads[0]).pages[0].guides.push(guide(origin_top - 4.0));
+    let mut cx = ctx(&doc, &sel, &cache, &layout);
+    cx.snap = SnapView::FACTORY;
+    cx.snap.snap_to_document_grid = false;
+    let down = layout.to_canvas(SpreadRef::Doc(0), item.center());
+    let drag_at = Point::new(down.x + (corner_raw.x - corner0.x), down.y + (corner_raw.y - corner0.y));
+    let mut t = create("selection");
+    t.pointer(&cx, &PointerEvent::new(PointerKind::Down, down.x, down.y));
+    let actions = t.pointer(&cx, &PointerEvent::new(PointerKind::Drag, drag_at.x, drag_at.y));
+    let params = match actions.last() {
+        Some(Action::Preview(cmd, p)) => {
+            assert_eq!(cmd, "transform.move");
+            p
+        }
+        other => panic!("{other:?}"),
+    };
+    let dy = params["dy"].as_f64().unwrap();
+    assert_eq!(params["toSpread"], spread_json(SpreadRef::Doc(1)));
+    assert!((dy - (52.0 - item.y0)).abs() < 1e-3, "dy {dy}, origin snap would not land on 52");
+}
+
+#[test]
+fn dimension_guide_lies_on_the_committed_side() {
+    let mut problems = Vec::new();
+
+    // Centered scale. Width 120 grows to the matched 123, so each side moves 1.5, not 3.
+    let mut doc = Document::new(&NewDocument::default());
+    let moving = add_rect(&mut doc, Rect::new(100.0, 100.0, 200.0, 160.0));
+    add_rect(&mut doc, Rect::new(400.0, 400.0, 523.0, 440.0));
+    let sel = Selection::items(vec![moving]);
+    let cache = Cache::new();
+    let layout = CanvasLayout::new(&doc, false);
+    let cx = dims_ctx(&doc, &sel, &cache, &layout, false);
+    let mut t = create("scale");
+    let center = spread_pt(&layout, 150.0, 130.0);
+    t.pointer(&cx, &PointerEvent::new(PointerKind::Down, center.x + 50.0, center.y + 30.0));
+    let drag = t.pointer(&cx, &PointerEvent::new(PointerKind::Drag, center.x + 60.0, center.y + 40.0));
+    let (sx, sy) = match &drag[..] {
+        [Action::Preview(cmd, p)] => {
+            assert_eq!(cmd, "transform.scale");
+            (p["sx"].as_f64().unwrap(), p["sy"].as_f64().unwrap())
+        }
+        other => panic!("{other:?}"),
+    };
+    let committed = Rect::new(150.0 - 50.0 * sx.abs(), 130.0 - 30.0 * sy.abs(), 150.0 + 50.0 * sx.abs(), 130.0 + 30.0 * sy.abs());
+    let xf = layout.xf(SpreadRef::Doc(0));
+    let bottom = (xf * Point::new(committed.x0, committed.y1), xf * Point::new(committed.x1, committed.y1));
+    let overlays = t.overlays(&cx);
+    let scale_guides = overlays.iter().filter(|o| matches!(o, Overlay::Guide { .. })).count();
+    if scale_guides != 1 || !guide_matches(&overlays, bottom.0, bottom.1) {
+        problems.push(format!(
+            "scale guide is not on the committed bottom ({:.4},{:.4})-({:.4},{:.4}), sx {sx} sy {sy}, {scale_guides} guides [{}]",
+            bottom.0.x,
+            bottom.0.y,
+            bottom.1.x,
+            bottom.1.y,
+            guide_list(&overlays)
+        ));
+    }
+
+    // Shift resize. Width snaps 130 to 133, then the height follows the aspect and the bottom moves.
+    let mut doc = Document::new(&NewDocument::default());
+    let moving = add_rect(&mut doc, Rect::new(100.0, 100.0, 200.0, 150.0));
+    add_rect(&mut doc, Rect::new(400.0, 400.0, 533.0, 430.0));
+    let sel = Selection::items(vec![moving]);
+    let cache = Cache::new();
+    let layout = CanvasLayout::new(&doc, false);
+    let cx = dims_ctx(&doc, &sel, &cache, &layout, false);
+    let mut t = create("selection");
+    let mods = Mods { shift: true, ..Mods::default() };
+    let down = spread_pt(&layout, 200.0, 150.0);
+    let drag_at = spread_pt(&layout, 230.0, 155.0);
+    t.pointer(&cx, &PointerEvent::new(PointerKind::Down, down.x, down.y));
+    let a = t.pointer(&cx, &PointerEvent::new(PointerKind::Drag, drag_at.x, drag_at.y).with_mods(mods));
+    let to = match &a[..] {
+        [Action::Preview(cmd, p)] => {
+            assert_eq!(cmd, "transform.resize");
+            p["to"].as_array().unwrap()
+        }
+        other => panic!("{other:?}"),
+    };
+    let rect = Rect::new(to[0].as_f64().unwrap(), to[1].as_f64().unwrap(), to[2].as_f64().unwrap(), to[3].as_f64().unwrap());
+    let xf = layout.xf(SpreadRef::Doc(0));
+    let y = rect.y0.max(rect.y1);
+    let (x0, x1) = (rect.x0.min(rect.x1), rect.x0.max(rect.x1));
+    let side = (xf * Point::new(x0, y), xf * Point::new(x1, y));
+    let overlays = t.overlays(&cx);
+    let shift_guides = overlays.iter().filter(|o| matches!(o, Overlay::Guide { .. })).count();
+    if shift_guides != 1 || !guide_matches(&overlays, side.0, side.1) {
+        problems.push(format!(
+            "shift guide is not on the committed side ({:.4},{:.4})-({:.4},{:.4}), rect {to:?}, {shift_guides} guides [{}]",
+            side.0.x,
+            side.0.y,
+            side.1.x,
+            side.1.y,
+            guide_list(&overlays)
+        ));
+    }
+    assert!(problems.is_empty(), "{}", problems.join(" | "));
+}
+
+#[test]
+fn rotation_drag_lands_on_the_other_angle() {
+    // Reference starts at 10. A raw command delta of 18 would show 28.
+    // The other item is at 30, so the composed preview delta is 20, not 30.
+    let mut doc = Document::new(&NewDocument::default());
+    let moving = add_rotated(&mut doc, Rect::new(100.0, 100.0, 180.0, 140.0), 10.0);
+    add_rotated(&mut doc, Rect::new(300.0, 80.0, 380.0, 140.0), 30.0);
+    let sel = Selection::items(vec![moving]);
+    let cache = Cache::new();
+    let layout = CanvasLayout::new(&doc, false);
+    let cx = dims_ctx(&doc, &sel, &cache, &layout, false);
+    let center = cx.selection_bounds().unwrap().center();
+    let radius = 80.0;
+    let down = Point::new(center.x + radius, center.y);
+    let aim = (-18.0_f64).to_radians();
+    let drag_at = Point::new(center.x + radius * aim.cos(), center.y + radius * aim.sin());
+    let raw_command = -((drag_at - center).atan2() - (down - center).atan2()).to_degrees();
+    assert!((raw_command - 18.0).abs() < 1e-6, "unsnapped command {raw_command}");
+    let mut t = create("rotate");
+    t.pointer(&cx, &PointerEvent::new(PointerKind::Down, down.x, down.y));
+    let actions = t.pointer(&cx, &PointerEvent::new(PointerKind::Drag, drag_at.x, drag_at.y));
+    let angle = match &actions[..] {
+        [Action::Preview(cmd, p)] => {
+            assert_eq!(cmd, "transform.rotate");
+            p["angle"].as_f64().unwrap()
+        }
+        other => panic!("{other:?}"),
+    };
+    assert!((angle - 20.0).abs() < 1e-4, "preview angle {angle}, want 20");
+}
+
+fn add_rotated(doc: &mut Document, rect: Rect, degrees: f64) -> ItemId {
+    let layer = doc.default_layer();
+    let id = ItemId(doc.alloc());
+    let mut item = Item::new(id, layer, Shape::Rectangle, shapes::rectangle(rect));
+    item.xf = designcraft_geom::Affine::rotate((-degrees).to_radians());
+    doc.insert_item(SpreadRef::Doc(0), item, None).unwrap();
+    id
+}
+
+#[test]
+fn pen_click_snaps_to_a_guide() {
+    let mut d = Document::new(&NewDocument::default());
+    Arc::make_mut(&mut d.spreads[0]).pages[0].guides.push(Guide {
+        orientation: Orientation::Vertical,
+        position: 100.0,
+        spread: true,
+        locked: false,
+        layer: None,
+        liquid: false,
+    });
+    let (s, c, l) = (Selection::default(), Cache::new(), CanvasLayout::new(&d, false));
+    let mut cx = ctx(&d, &s, &c, &l);
+    cx.snap = SnapView::FACTORY;
+    let mut t = create("pen");
+    let click = |t: &mut Box<dyn Tool>, cx: &ToolContext, x: f64, y: f64| {
+        t.pointer(cx, &PointerEvent::new(PointerKind::Down, x, y));
+        t.pointer(cx, &PointerEvent::new(PointerKind::Up, x, y))
+    };
+    assert!(click(&mut t, &cx, 102.0, 80.0).is_empty());
+    let up = click(&mut t, &cx, 180.0, 80.0);
+    let Action::Exec(cmd, p) = &up[0] else {
+        panic!("expected path.create, got {up:?}");
+    };
+    assert_eq!(cmd, "path.create");
+    let x = p["anchors"][0]["p"][0].as_f64().unwrap();
+    assert!((x - 100.0).abs() < 1e-6, "anchor x {x}");
 }

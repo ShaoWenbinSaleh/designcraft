@@ -105,7 +105,7 @@ pub fn specs() -> Vec<CommandSpec> {
     vec![
         cmd!(noundo "edit.undo", "Undo", ["Edit"], Some("Cmd+Z"), "{}", can_undo, |s, _| {
             let st = s.doc_mut()?;
-            let e = st.history.undo.pop().expect("checked");
+            let e = st.history.undo.pop().ok_or_else(|| super::bad("edit.undo", "nothing to undo"))?;
             st.history.redo.push(HistoryEntry { label: e.label.clone(), doc: st.doc.clone(), selection: st.selection.clone() });
             st.doc = e.doc;
             st.selection = e.selection;
@@ -114,7 +114,7 @@ pub fn specs() -> Vec<CommandSpec> {
         }),
         cmd!(noundo "edit.redo", "Redo", ["Edit"], Some("Cmd+Shift+Z"), "{}", can_redo, |s, _| {
             let st = s.doc_mut()?;
-            let e = st.history.redo.pop().expect("checked");
+            let e = st.history.redo.pop().ok_or_else(|| super::bad("edit.redo", "nothing to redo"))?;
             st.history.undo.push(HistoryEntry { label: e.label.clone(), doc: st.doc.clone(), selection: st.selection.clone() });
             st.doc = e.doc;
             st.selection = e.selection;
@@ -233,10 +233,9 @@ pub fn specs() -> Vec<CommandSpec> {
                 if s.doc()?.selection.text.is_some() {
                     return paste_text(s, super::str_param(p, "text").map(str::to_string), true);
                 }
-                if s.clipboard.is_none() {
+                let Some(clip) = s.clipboard.clone() else {
                     return Err(super::bad("edit.paste", "clipboard is empty"));
-                }
-                let clip = s.clipboard.clone().expect("checked");
+                };
                 let off = if bool_or(p, "inPlace", false) { 0.0 } else { 12.0 };
                 let ids: Vec<ItemId> = clip.spreads.first().map(|sp| sp.items.iter().map(|i| i.id).collect()).unwrap_or_default();
                 s.edit(|d, sel| {

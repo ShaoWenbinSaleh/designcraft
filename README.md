@@ -23,7 +23,7 @@
 <p align="center">
   <img alt="Written in Rust" src="https://img.shields.io/badge/written%20in-Rust-4d7a0a?style=flat-square&logo=rust&logoColor=white">
   <img alt="Runs on macOS, Windows, Linux and the web" src="https://img.shields.io/badge/runs%20on-macOS%20%C2%B7%20Windows%20%C2%B7%20Linux%20%C2%B7%20Web-7bb51c?style=flat-square">
-  <img alt="License: MIT or Apache-2.0" src="https://img.shields.io/badge/license-MIT%20%2F%20Apache--2.0-4d7a0a?style=flat-square">
+  <img alt="License: MIT OR Apache-2.0" src="https://img.shields.io/badge/license-MIT%20%2F%20Apache--2.0-4d7a0a?style=flat-square">
   <img alt="Agent-drivable over MCP" src="https://img.shields.io/badge/agents-MCP-7bb51c?style=flat-square">
 </p>
 
@@ -55,7 +55,7 @@
   <a href="#web">Web</a> ·
   <a href="#architecture">Architecture</a> ·
   <a href="#the-crafting-apps">The Crafting Apps</a> ·
-  <a href="#license">License</a>
+  <a href="#license-and-credits">License and credits</a>
 </p>
 
 ## The sample magazine
@@ -104,6 +104,19 @@ cargo run --release -p designcraft-cli -- run --sample --all-pages out/       # 
 cargo run --release -p designcraft-cli -- commands         # list every command
 cargo xtask ci                                             # fmt, clippy, tests, assets, layering, wasm
 ```
+
+Japanese text (UI and documents) uses fonts from
+[storytold/craft-fonts](https://github.com/storytold/craft-fonts), an optional build input (font
+files are never committed here; see craftrules
+[`standards/fonts.md`](https://github.com/storytold/craftrules/blob/main/standards/fonts.md)):
+
+```sh
+git clone https://github.com/storytold/craft-fonts ../craft-fonts
+CRAFT_FONTS_DIR="$PWD/../craft-fonts" cargo run --release -p designcraft   # absolute path
+```
+
+Without it, Japanese falls back to the system's fonts (none on the web). Release builds always
+include it.
 
 To drive a running app, send JSON lines to `127.0.0.1:7979`. The protocol is described in
 [`docs/control-protocol.md`](docs/control-protocol.md).
@@ -181,11 +194,21 @@ And [**ArtCraft**](https://getartcraft.com/) itself, our AI image and video stud
   <a href="https://getartcraft.com/apps/designcraft">DesignCraft</a>
 </p>
 
-## License
+## License and credits
 
-MIT OR Apache-2.0 ([`LICENSE-MIT`](LICENSE-MIT), [`LICENSE-APACHE`](LICENSE-APACHE)). Bundled fonts
-are OFL; all icons are drawn in code and are original. Per-asset attribution is in
-[`ASSETS.md`](ASSETS.md) (see also [`NOTICE`](NOTICE)).
+DesignCraft is dual-licensed under [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE), at your option.
+Copyright (c) 2026 ArtCraft Team and the DesignCraft contributors. Required notices are in [NOTICE](NOTICE).
+
+Bundled fonts, icons, images and other assets keep their own open licenses; each one is listed
+with its author, source and license in [ASSETS.md](ASSETS.md).
+
+The bundled fonts, and the craft-fonts fonts embedded by release builds, are under the SIL Open
+Font License; all UI icons are drawn in code and are original.
+
+The ArtCraft name, wordmark and logos in [`docs/brand/`](docs/brand/) are trademarks of the
+ArtCraft Team and are not covered by this license. They may be used only unmodified, and only as
+part of this repository and DesignCraft, under [`docs/brand/LICENSE-brand.txt`](docs/brand/LICENSE-brand.txt).
+Forks and modified versions must remove them.
 
 <sub>Adobe, Photoshop, Illustrator, Premiere Pro, Lightroom, Acrobat, After Effects and InDesign are trademarks or registered trademarks of Adobe Inc. in the United States and/or other countries. DesignCraft is an independent, open-source project and is not affiliated with, sponsored by or endorsed by Adobe Inc.; these names are used only to describe the workflows it is compatible with.</sub>
 

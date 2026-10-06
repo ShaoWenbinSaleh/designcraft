@@ -198,7 +198,8 @@ pub fn handle(app: &mut DesignApp, ctx: &egui::Context, req: &ControlRequest) ->
             app.synthetic.push(egui::Event::PointerMoved(a));
             app.synthetic.push(egui::Event::PointerButton { pos: a, button, pressed: true, modifiers });
             if req.method == "ui.drag" {
-                let steps = p.get("steps").and_then(Value::as_u64).unwrap_or(8).max(1);
+                // From the caller: a huge count would queue events until memory runs out.
+                let steps = p.get("steps").and_then(Value::as_u64).unwrap_or(8).clamp(1, 10_000);
                 for i in 1..=steps {
                     let t = i as f32 / steps as f32;
                     app.synthetic.push(egui::Event::PointerMoved(a + (end - a) * t));

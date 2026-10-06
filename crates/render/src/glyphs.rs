@@ -39,7 +39,9 @@ pub fn glyph_grid(family: &str, style: &str, chars: &[char], cols: u32, cell: u3
     ctx.flush();
     let mut pixels = vec![0u8; w as usize * h as usize * 4];
     let mut res = Resources::new();
-    ctx.render(vello_cpu::PixmapMut::new(w, h, &mut pixels).expect("buffer size"), &mut res);
+    if let Some(pm) = vello_cpu::PixmapMut::new(w, h, &mut pixels) {
+        ctx.render(pm, &mut res);
+    }
     Rendered { width: w as u32, height: h as u32, pixels }
 }
 
@@ -71,7 +73,9 @@ pub fn text_line(family: &str, style: &str, text: &str, height: u32, color: [u8;
     ctx.flush();
     let mut pixels = vec![0u8; w as usize * h as usize * 4];
     let mut res = Resources::new();
-    ctx.render(vello_cpu::PixmapMut::new(w, h, &mut pixels).expect("buffer size"), &mut res);
+    if let Some(pm) = vello_cpu::PixmapMut::new(w, h, &mut pixels) {
+        ctx.render(pm, &mut res);
+    }
     Rendered { width: w as u32, height: h as u32, pixels }
 }
 

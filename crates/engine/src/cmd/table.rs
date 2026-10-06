@@ -214,19 +214,13 @@ fn table_specs() -> Vec<CommandSpec> {
         ),
         cmd!(noundo "table.select", "Select Cells", [], None, "{story?, table?, rows?: [a,b], cols?: [a,b], what?: cell|row|column|table}", in_table_or_ids, select),
         cmd!(noundo "table.selectTable", "Select Table", ["Table", "Select"], None, "{}", in_table, |s, p| {
-            let mut p = p.clone();
-            p["what"] = json!("table");
-            select(s, &p)
+            select(s, &super::with_param(p, "what", json!("table")))
         }),
         cmd!(noundo "table.selectRow", "Select Row", ["Table", "Select"], None, "{}", in_table, |s, p| {
-            let mut p = p.clone();
-            p["what"] = json!("row");
-            select(s, &p)
+            select(s, &super::with_param(p, "what", json!("row")))
         }),
         cmd!(noundo "table.selectColumn", "Select Column", ["Table", "Select"], None, "{}", in_table, |s, p| {
-            let mut p = p.clone();
-            p["what"] = json!("column");
-            select(s, &p)
+            select(s, &super::with_param(p, "what", json!("column")))
         }),
         cmd!(noundo "table.nextCell", "Next Cell", [], None, "{}", in_cell, |s, _| step_cell(s, true)),
         cmd!(noundo "table.prevCell", "Previous Cell", [], None, "{}", in_cell, |s, _| step_cell(s, false)),
@@ -238,7 +232,7 @@ fn table_specs() -> Vec<CommandSpec> {
 
 fn in_table(s: &Session) -> std::result::Result<(), String> {
     has_doc(s)?;
-    let st = s.active().expect("doc");
+    let st = s.active().ok_or("no document open")?;
     if st.selection.cells.is_some() || st.selection.text.is_some_and(|t| t.cell.is_some()) {
         return Ok(());
     }
@@ -636,7 +630,7 @@ fn set_cell(s: &mut Session, p: &Value) -> Result<Value> {
                 if owners[r * nc + c] != (r, c) {
                     continue;
                 }
-                let cell = t.cell_mut(r, c).expect("in range");
+                let Some(cell) = t.cell_mut(r, c) else { continue };
                 if let Some(f) = &fill {
                     cell.fill = f.clone();
                 }
@@ -870,10 +864,10 @@ fn get(s: &mut Session, p: &Value) -> Result<Value> {
     let cells: Vec<Value> = (0..t.nrows())
         .flat_map(|r| (0..t.ncols()).map(move |c| (r, c)))
         .filter(|&(r, c)| owners[r * t.ncols() + c] == (r, c))
-        .map(|(r, c)| {
-            let cell = t.cell(r, c).expect("in range");
-            json!({"row": r, "col": c, "rowSpan": cell.row_span, "colSpan": cell.col_span, "text": cell.text.text, "fill": cell.fill,
-                "insets": cell.insets, "vj": cell.vj, "style": cell.style})
+        .filter_map(|(r, c)| {
+            let cell = t.cell(r, c)?;
+            Some(json!({"row": r, "col": c, "rowSpan": cell.row_span, "colSpan": cell.col_span, "text": cell.text.text, "fill": cell.fill,
+                "insets": cell.insets, "vj": cell.vj, "style": cell.style}))
         })
         .collect();
     Ok(json!({
@@ -1244,7 +1238,7 @@ fn place_graphic(s: &mut Session, p: &Value) -> Result<Value> {
         let (nw, nh) = (pw as f64, ph as f64);
         let k = if fill { (bw / nw).max(bh / nh) } else { (bw / nw).min(bh / nh) };
         let xf = designcraft_geom::Affine::translate(((bw - nw * k) / 2.0, (bh - nh * k) / 2.0)) * designcraft_geom::Affine::scale(k);
-        let cell = t.cell_mut(r, c).expect("exists");
+        let cell = t.cell_mut(r, c).ok_or_else(|| bad(ID, format!("no cell {r},{c}")))?;
         cell.graphic = Some(designcraft_doc::Graphic {
             asset: aid,
             size: (nw, nh),

@@ -118,6 +118,75 @@ pub fn make_pdfx4(pdf: &[u8], title: &str) -> Option<Vec<u8>> {
     Some(out)
 }
 
+/// krilla gives every transparency group it writes (placed PDF pages, opacity, isolated
+/// blending) a DeviceRGB blending space. In a print document that puts DeviceRGB in a CMYK file
+/// (PDF/X-4 forbids it under a CMYK output intent) and blends CMYK art through RGB, which can
+/// turn a K-only black into a four-colour black. This rewrites those group dictionaries to
+/// DeviceCMYK in place and at the same length (the optional `/Type/Group` gives the room), so
+/// every cross-reference offset stays valid. Only object dictionaries are touched, never stream
+/// data. Returns how many groups changed.
+/// Whether a transparency group dictionary still names DeviceRGB as its blending space.
+pub fn has_rgb_groups(pdf: &[u8]) -> bool {
+    pdf.windows(b"/CS/DeviceRGB".len()).enumerate().any(|(i, w)| {
+        w == b"/CS/DeviceRGB" && pdf.get(i.saturating_sub(64)..i).is_some_and(|before| before.windows(15).any(|b| b == b"/S/Transparency"))
+    })
+}
+
+pub fn cmyk_group_spaces(pdf: &mut [u8]) -> usize {
+    const FORMS: [(&[u8], &[u8]); 2] = [
+        (b"/Group<</Type/Group/S/Transparency/I true/CS/DeviceRGB>>", b"/Group<</S/Transparency/I true/CS/DeviceCMYK>>"),
+        (b"/Group<</Type/Group/S/Transparency/CS/DeviceRGB>>", b"/Group<</S/Transparency/CS/DeviceCMYK>>"),
+    ];
+    let Some(dicts) = dictionary_ranges(pdf) else { return 0 };
+    let mut changed = 0;
+    for r in dicts {
+        for (from, to) in FORMS {
+            let mut at = r.start;
+            while let Some(i) = find(pdf.get(..r.end).unwrap_or_default(), from, at) {
+                if let Some(dst) = pdf.get_mut(i..i + from.len()) {
+                    dst.fill(b' ');
+                    if let Some(head) = dst.get_mut(..to.len()) {
+                        head.copy_from_slice(to);
+                        changed += 1;
+                    }
+                }
+                at = i + from.len();
+            }
+        }
+    }
+    changed
+}
+
+/// Byte ranges of the dictionary part of every object in a file with one classic
+/// cross-reference table (krilla's output): from the object's offset to its `stream` keyword or
+/// `endobj`. `None` when the table can't be read.
+fn dictionary_ranges(pdf: &[u8]) -> Option<Vec<std::ops::Range<usize>>> {
+    let tail = String::from_utf8_lossy(pdf.get(rfind(pdf, b"startxref")?..)?).to_string();
+    let xref = int_after(&tail, "startxref")?;
+    let table = pdf.get(xref..)?;
+    if !table.starts_with(b"xref") {
+        return None;
+    }
+    let end = find(table, b"trailer", 0)?;
+    let text = String::from_utf8_lossy(table.get(4..end)?).to_string();
+    let mut words = text.split_ascii_whitespace();
+    let mut out = Vec::new();
+    while let (Some(_first), Some(count)) = (words.next(), words.next()) {
+        let count: usize = count.parse().ok()?;
+        for _ in 0..count {
+            let (off, _gen, kind) = (words.next()?, words.next()?, words.next()?);
+            if kind != "n" {
+                continue;
+            }
+            let start: usize = off.parse().ok()?;
+            let endobj = find(pdf, b"endobj", start)?;
+            let stop = find(pdf.get(..endobj)?, b"stream", start).unwrap_or(endobj);
+            out.push(start..stop);
+        }
+    }
+    Some(out)
+}
+
 /// PDF/X-4 checks on an exported file: what's missing (empty = passes these checks).
 pub fn check_pdfx4(pdf: &[u8]) -> Vec<String> {
     let mut issues = Vec::new();

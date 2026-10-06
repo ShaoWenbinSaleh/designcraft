@@ -41,7 +41,10 @@ pub fn specs() -> Vec<CommandSpec> {
             let dir = recovery_dir(s, p)?;
             Ok(json!({"opened": crate::recovery::open(s, &dir)?}))
         }),
-        cmd!(query "file.serialize", "Serialize", [], None, "{} → {json}", has_doc, |s, _| Ok(json!({"json": String::from_utf8_lossy(&to_bytes(&s.doc()?.doc)).to_string()}))),
+        cmd!(query "file.serialize", "Serialize", [], None, "{} → {base64, bytes} the .designcraft file", has_doc, |s, _| {
+            let bytes = to_bytes(&s.doc()?.doc);
+            Ok(json!({"base64": base64_encode(&bytes), "bytes": bytes.len()}))
+        }),
         cmd!(noundo "file.close", "Close", ["File"], Some("Cmd+W"), "{index?}", has_doc, |s, p| {
             let i = p.get("index").and_then(Value::as_u64).map(|v| v as usize).or(s.active_index()).unwrap_or(0);
             s.close_document(i);

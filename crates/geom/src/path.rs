@@ -307,13 +307,12 @@ impl PathData {
                 PathEl::ClosePath => {
                     if let Some(mut sp) = cur.take() {
                         // Merge a closing anchor that duplicates the start.
-                        if sp.anchors.len() > 1 {
-                            let first = sp.anchors[0].p;
-                            let lastp = sp.anchors.last().unwrap().p;
-                            if first.distance(lastp) < 1e-7 {
-                                let l = sp.anchors.pop().unwrap();
-                                sp.anchors[0].h_in = l.h_in;
-                            }
+                        if sp.anchors.len() > 1
+                            && let (Some(first), Some(last)) = (sp.anchors.first(), sp.anchors.last())
+                            && first.p.distance(last.p) < 1e-7
+                            && let Some(l) = sp.anchors.pop()
+                        {
+                            sp.anchors[0].h_in = l.h_in;
                         }
                         sp.closed = true;
                         for a in &mut sp.anchors {
@@ -341,9 +340,10 @@ impl PathData {
             return None;
         }
         let bp = self.to_bezpath();
-        if self.anchor_count() == 1 {
-            let p = self.subpaths.iter().find_map(|s| s.anchors.first()).unwrap().p;
-            return Some(Rect::from_points(p, p));
+        if self.anchor_count() == 1
+            && let Some(a) = self.subpaths.iter().find_map(|s| s.anchors.first())
+        {
+            return Some(Rect::from_points(a.p, a.p));
         }
         Some(bp.bounding_box())
     }

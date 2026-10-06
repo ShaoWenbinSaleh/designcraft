@@ -5,6 +5,8 @@
 //! `--control <port>` (or `DESIGNCRAFT_CONTROL_PORT`) starts a localhost JSON-lines control server:
 //! `{"id":1,"method":"ui.inspect","params":{}}` → `{"id":1,"ok":true,"result":…}`.
 //! See `designcraft_ui_egui::control` for the methods.
+#![cfg_attr(all(target_os = "windows", not(debug_assertions)), windows_subsystem = "windows")]
+#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 mod control_server;
 #[cfg(target_os = "macos")]
@@ -197,6 +199,16 @@ fn main() -> eframe::Result {
     options.viewport = options.viewport.with_app_id(APP_ID);
     if let Some(icon) = app_icon() {
         options.viewport = options.viewport.with_icon(icon);
+    }
+    // winit has no file drag-and-drop on Wayland (only on X11), so dropping images from the file
+    // manager showed a "no" cursor. Run through XWayland when it's there; DESIGNCRAFT_WAYLAND=1
+    // keeps the native Wayland backend.
+    #[cfg(all(unix, not(target_os = "macos")))]
+    if std::env::var_os("DISPLAY").is_some() && std::env::var_os("DESIGNCRAFT_WAYLAND").is_none() {
+        options.event_loop_builder = Some(Box::new(|b| {
+            use winit::platform::x11::EventLoopBuilderExtX11;
+            b.with_x11();
+        }));
     }
     eframe::run_native(
         "DesignCraft",

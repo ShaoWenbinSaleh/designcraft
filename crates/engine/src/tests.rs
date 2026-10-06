@@ -45,7 +45,7 @@ fn smart_quotes_and_formatting() {
 fn tool_gesture_creates_one_undo_step() {
     let mut s = session();
     s.set_tool("rectangle");
-    let v = ViewInfo { zoom: 1.0 };
+    let v = ViewInfo::at_zoom(1.0);
     use designcraft_tools::{PointerEvent, PointerKind};
     s.pointer(&PointerEvent::new(PointerKind::Down, 10.0, 10.0), v).unwrap();
     for i in 1..10 {
@@ -69,7 +69,87 @@ fn tool_gesture_creates_one_undo_step() {
     s.pointer(&PointerEvent::new(PointerKind::Down, 60.0, 30.0), v).unwrap();
     s.pointer(&PointerEvent::new(PointerKind::Drag, 48.0, 30.0), v).unwrap();
     s.pointer(&PointerEvent::new(PointerKind::Up, 48.0, 30.0), v).unwrap();
-    assert_eq!(s.doc().unwrap().doc.spreads[0].items[0].bounds().x0, 36.0);
+    // The rectangle tool's 1 pt centered stroke sits half a point outside the path.
+    // The visible edge lands on the 36 pt margin.
+    let it = &s.doc().unwrap().doc.spreads[0].items[0];
+    assert!((it.visible_bounds().x0 - 36.0).abs() < 1e-6, "visible {:?} path {:?}", it.visible_bounds(), it.bounds());
+}
+
+#[test]
+fn shift_move_does_not_take_the_other_axis() {
+    use designcraft_tools::{PointerEvent, PointerKind};
+    let mut s = session();
+    s.execute("frame.create", &json!({"rect": [80.0, 100.0, 140.0, 140.0], "content": "unassigned"})).unwrap();
+    s.execute("guide.add", &json!({"orientation": "horizontal", "position": 102.0, "page": 0})).unwrap();
+    s.set_tool("selection");
+    let v = ViewInfo::at_zoom(1.0);
+    let shift = designcraft_tools::Mods { shift: true, ..Default::default() };
+    s.pointer(&PointerEvent::new(PointerKind::Down, 100.0, 120.0).with_mods(shift), v).unwrap();
+    s.pointer(&PointerEvent::new(PointerKind::Drag, 160.0, 121.0).with_mods(shift), v).unwrap();
+    s.pointer(&PointerEvent::new(PointerKind::Up, 160.0, 121.0).with_mods(shift), v).unwrap();
+    let b = s.doc().unwrap().doc.spreads[0].items[0].bounds();
+    assert!((b.y0 - 100.0).abs() < 1e-6, "locked axis jumped to {b:?}");
+    assert!(b.x0 > 80.0);
+}
+
+#[test]
+fn cmd_move_does_not_snap() {
+    use designcraft_tools::{PointerEvent, PointerKind};
+    let mut s = session();
+    s.execute("frame.create", &json!({"rect": [80.0, 100.0, 140.0, 140.0], "content": "unassigned"})).unwrap();
+    s.execute("guide.add", &json!({"orientation": "horizontal", "position": 102.0, "page": 0})).unwrap();
+    s.set_tool("selection");
+    let v = ViewInfo::at_zoom(1.0);
+    let cmd = designcraft_tools::Mods { cmd: true, shift: false, ..Default::default() };
+    s.pointer(&PointerEvent::new(PointerKind::Down, 110.0, 120.0).with_mods(cmd), v).unwrap();
+    s.pointer(&PointerEvent::new(PointerKind::Drag, 160.0, 121.0).with_mods(cmd), v).unwrap();
+    s.pointer(&PointerEvent::new(PointerKind::Up, 160.0, 121.0).with_mods(cmd), v).unwrap();
+    let b = s.doc().unwrap().doc.spreads[0].items[0].bounds();
+    assert!((b.y0 - 101.0).abs() < 1e-6, "cmd move snapped to {b:?}");
+    assert!(b.x0 > 80.0);
+}
+
+#[test]
+fn cmd_resize_still_snaps_to_a_guide() {
+    use designcraft_tools::{PointerEvent, PointerKind};
+    let mut s = session();
+    s.execute("frame.create", &json!({"rect": [100.0, 100.0, 200.0, 180.0], "content": "unassigned"})).unwrap();
+    s.execute("guide.add", &json!({"orientation": "vertical", "position": 250.0, "page": 0})).unwrap();
+    s.set_tool("selection");
+    let v = ViewInfo::at_zoom(1.0);
+    let b0 = s.doc().unwrap().doc.spreads[0].items[0].bounds();
+    let right = s.layout().to_canvas(designcraft_doc::SpreadRef::Doc(0), designcraft_geom::Point::new(b0.x1, b0.center().y));
+    let cmd = designcraft_tools::Mods { cmd: true, ..Default::default() };
+    s.pointer(&PointerEvent::new(PointerKind::Down, right.x, right.y).with_mods(cmd), v).unwrap();
+    s.pointer(&PointerEvent::new(PointerKind::Drag, right.x + 47.0, right.y).with_mods(cmd), v).unwrap();
+    s.pointer(&PointerEvent::new(PointerKind::Up, right.x + 47.0, right.y).with_mods(cmd), v).unwrap();
+    let it = &s.doc().unwrap().doc.spreads[0].items[0];
+    let b = it.bounds();
+    assert!((b.x1 - 250.0).abs() < 1e-6, "cmd resize did not snap the moving edge: {b:?}");
+    assert!((b.x0 - b0.x0).abs() < 1e-6 && (b.y0 - b0.y0).abs() < 1e-6 && (b.y1 - b0.y1).abs() < 1e-6, "{b:?}");
+    let expect = (b.x1 - b.x0).abs() / b0.width() * (b.y1 - b.y0).abs() / b0.height();
+    assert!((it.stroke.weight - expect.sqrt()).abs() < 1e-6, "content scale weight {} want {}", it.stroke.weight, expect.sqrt());
+}
+
+#[test]
+fn shift_move_on_a_turned_spread_stays_on_the_line() {
+    use designcraft_tools::{PointerEvent, PointerKind};
+    let mut s = session();
+    s.execute("frame.create", &json!({"rect": [80.0, 100.0, 140.0, 140.0], "content": "unassigned"})).unwrap();
+    s.execute("layout.rotateSpreadView", &json!({"angle": 90})).unwrap();
+    // Vertical guide sits on the spread axis that a screen-horizontal Shift lock must not offer.
+    s.execute("guide.add", &json!({"orientation": "vertical", "position": 82.0, "page": 0})).unwrap();
+    s.set_tool("selection");
+    let v = ViewInfo::at_zoom(1.0);
+    let b0 = s.doc().unwrap().doc.spreads[0].items[0].bounds();
+    let c = s.layout().to_canvas(designcraft_doc::SpreadRef::Doc(0), b0.center());
+    let shift = designcraft_tools::Mods { shift: true, ..Default::default() };
+    s.pointer(&PointerEvent::new(PointerKind::Down, c.x, c.y).with_mods(shift), v).unwrap();
+    s.pointer(&PointerEvent::new(PointerKind::Drag, c.x + 60.0, c.y + 1.0).with_mods(shift), v).unwrap();
+    s.pointer(&PointerEvent::new(PointerKind::Up, c.x + 60.0, c.y + 1.0).with_mods(shift), v).unwrap();
+    let b = s.doc().unwrap().doc.spreads[0].items[0].bounds();
+    assert!((b.x0 - b0.x0).abs() < 1e-6, "locked screen axis jumped to {b:?}");
+    assert!((b.y0 - b0.y0).abs() > 1.0, "free axis did not move: {b:?}");
 }
 
 #[test]
@@ -134,7 +214,7 @@ fn align_and_distribute() {
 fn pen_draws_and_direct_selection_edits() {
     use designcraft_tools::{PointerEvent, PointerKind};
     let mut s = session();
-    let v = ViewInfo { zoom: 1.0 };
+    let v = ViewInfo::at_zoom(1.0);
     s.set_tool("pen");
     let click = |s: &mut Session, x: f64, y: f64| {
         s.pointer(&PointerEvent::new(PointerKind::Down, x, y), v).unwrap();
@@ -160,7 +240,9 @@ fn pen_draws_and_direct_selection_edits() {
     s.pointer(&PointerEvent::new(PointerKind::Drag, 90.0, 80.0), v).unwrap();
     s.pointer(&PointerEvent::new(PointerKind::Up, 90.0, 80.0), v).unwrap();
     let a = s.doc().unwrap().doc.item(id).unwrap().path.subpaths[0].anchors[0].p;
-    assert_eq!(a, designcraft_geom::Point::new(90.0, 80.0));
+    // The pen placed this anchor on the baseline at y 96. Dragging toward (90, 80)
+    // proposes y 76, and the baseline at 72 is inside the zone, so the anchor lands at (90, 72).
+    assert_eq!(a, designcraft_geom::Point::new(90.0, 72.0));
 }
 
 #[test]
@@ -189,7 +271,7 @@ fn place_gun_click_drag_and_into_frame() {
     let b64 = cmd::base64_encode(&png);
     s.execute("place.load", &json!({"base64": b64, "name": "a.png"})).unwrap();
     assert_eq!(s.tool_id(), "placeGun");
-    let v = ViewInfo { zoom: 1.0 };
+    let v = ViewInfo::at_zoom(1.0);
     s.pointer(&PointerEvent::new(PointerKind::Down, 100.0, 100.0), v).unwrap();
     s.pointer(&PointerEvent::new(PointerKind::Drag, 180.0, 300.0), v).unwrap();
     s.pointer(&PointerEvent::new(PointerKind::Up, 180.0, 300.0), v).unwrap();
@@ -239,6 +321,43 @@ fn hyperlinks_and_bookmarks_reach_the_pdf() {
     let back = cmd::file_from(&cmd::file_bytes(&s.doc().unwrap().doc)).unwrap();
     assert_eq!(back.hyperlinks.len(), 2);
     assert_eq!(back.bookmarks.len(), 2);
+}
+
+#[test]
+fn serialized_document_opens_again() {
+    // The web app saves (downloads) what `file.serialize` returns: it must be the file's exact bytes.
+    let mut s = session();
+    s.execute("frame.create", &json!({"rect": [36, 36, 300, 200], "content": "text", "text": "Saved on the web"})).unwrap();
+    let r = s.execute("file.serialize", &json!({})).unwrap();
+    let bytes = cmd::base64_decode(r["base64"].as_str().expect("base64"));
+    assert_eq!(bytes, cmd::to_bytes(&s.doc().unwrap().doc));
+    s.execute("file.openBytes", &json!({"name": "copy", "base64": r["base64"]})).unwrap();
+    let d = s.execute("document.inspect", &json!({})).unwrap();
+    assert_eq!(d["stories"][0]["preview"], "Saved on the web");
+}
+
+#[test]
+fn active_layer_survives_undoing_new_layer() {
+    let mut s = session();
+    let layer_of = |s: &mut Session, id: u64| {
+        let d = s.execute("document.inspect", &json!({})).unwrap();
+        let items = d["spreads"].as_array().unwrap().iter().flat_map(|sp| sp["items"].as_array().unwrap().clone()).collect::<Vec<_>>();
+        let it = items.into_iter().find(|i| i["id"] == id).unwrap();
+        let layers: Vec<Value> = d["layers"].as_array().unwrap().iter().map(|l| l["id"].clone()).collect();
+        (it["layer"].clone(), layers)
+    };
+    // New Layer, then Undo: the new layer is gone, so it can't stay the active one.
+    s.execute("layer.new", &json!({})).unwrap();
+    s.execute("edit.undo", &json!({})).unwrap();
+    let f = s.execute("frame.create", &json!({"rect": [36, 36, 300, 200], "content": "text", "text": "Visible"})).unwrap();
+    let (layer, layers) = layer_of(&mut s, f["id"].as_u64().unwrap());
+    assert!(layers.contains(&layer), "frame on layer {layer} not in {layers:?}");
+    // Delete Unused Layers removing the (empty) active layer.
+    s.execute("layer.new", &json!({})).unwrap();
+    s.execute("layer.deleteUnused", &json!({})).unwrap();
+    let f = s.execute("frame.create", &json!({"rect": [36, 236, 300, 400], "content": "text", "text": "Also visible"})).unwrap();
+    let (layer, layers) = layer_of(&mut s, f["id"].as_u64().unwrap());
+    assert!(layers.contains(&layer), "frame on layer {layer} not in {layers:?}");
 }
 
 #[test]
@@ -376,7 +495,7 @@ fn gridify_while_drawing_frames() {
     let mut s = session();
     let n0 = s.doc().unwrap().doc.spreads[0].items.len();
     s.set_tool("rectangleFrame");
-    let v = ViewInfo { zoom: 1.0 };
+    let v = ViewInfo::at_zoom(1.0);
     s.pointer(&PointerEvent::new(PointerKind::Down, 100.0, 100.0), v).unwrap();
     s.pointer(&PointerEvent::new(PointerKind::Drag, 312.0, 212.0), v).unwrap();
     for k in [ToolKey::Right, ToolKey::Right, ToolKey::Up, ToolKey::Left] {
@@ -397,7 +516,7 @@ fn gap_tool_drag_moves_the_gap() {
     let mut s = session();
     let a = s.execute("frame.create", &json!({"rect": [100, 100, 200, 300]})).unwrap()["id"].as_u64().unwrap();
     s.set_tool("gap");
-    let v = ViewInfo { zoom: 1.0 };
+    let v = ViewInfo::at_zoom(1.0);
     s.pointer(&PointerEvent::new(PointerKind::Down, 250.0, 200.0), v).unwrap();
     s.pointer(&PointerEvent::new(PointerKind::Drag, 270.0, 205.0), v).unwrap();
     s.pointer(&PointerEvent::new(PointerKind::Up, 270.0, 205.0), v).unwrap();
@@ -405,4 +524,16 @@ fn gap_tool_drag_moves_the_gap() {
     let b = s.doc().unwrap().doc.item(designcraft_doc::ItemId(a)).unwrap().bounds();
     assert_eq!(b.x1, 220.0, "{b:?}");
     assert_eq!(s.doc().unwrap().history.undo.len(), 2, "create + one gap move");
+}
+
+/// Parameters reach commands from the control channel, MCP and scripts as any JSON value.
+/// Commands that add a key to their parameters (`q["fixedLayout"] = …`) panicked on an array.
+#[test]
+fn commands_take_non_object_params_without_panicking() {
+    let mut s = Session::new();
+    s.execute("file.new", &json!({})).unwrap();
+    for p in [json!([1, 2]), json!("text"), json!(3), Value::Null] {
+        let r = s.execute("file.exportFixedEpub", &p);
+        assert!(r.is_ok(), "{p}: {r:?}");
+    }
 }

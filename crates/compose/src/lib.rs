@@ -7,6 +7,7 @@
 //! breaks, vertical justification) → overset detection.
 //!
 //! Output coordinates are each frame's *inner* space (apply the frame item's `xf` for spread space).
+#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 #![forbid(unsafe_code)]
 
 pub mod breaker;
@@ -2162,13 +2163,14 @@ pub fn path_glyphs(
             };
             let m =
                 place * designcraft_geom::Affine::translate((g.x, l.baseline + g.y)) * skew * designcraft_geom::Affine::scale_non_uniform(g.sx, g.sy);
-            let bp = match runs.iter_mut().find(|r| r.0 == g.style) {
-                Some(r) => &mut r.1,
+            let k = match runs.iter().position(|r| r.0 == g.style) {
+                Some(k) => k,
                 None => {
                     runs.push((g.style, designcraft_geom::BezPath::new()));
-                    &mut runs.last_mut().expect("pushed").1
+                    runs.len() - 1
                 }
             };
+            let bp = &mut runs[k].1;
             bp.extend((m * outline.as_ref().clone()).elements().iter().copied());
         }
     }

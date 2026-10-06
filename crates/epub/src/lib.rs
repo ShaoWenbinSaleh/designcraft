@@ -4,6 +4,7 @@
 //! frame); paragraph styles become CSS classes (`p.<slug>`), character styles become `span`
 //! classes, local overrides become inline styles. Placed graphics become `<figure>` elements at
 //! their position in the reading order. Parent-page items (folios, running heads) are skipped.
+#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 #![forbid(unsafe_code)]
 
 use std::collections::BTreeMap;
@@ -143,6 +144,32 @@ pub fn slug(name: &str) -> String {
     }
 }
 
+/// Class names for `names`, in order: [`slug`]s made unique with a `-2`, `-3`… suffix, so styles
+/// whose names slug alike ("Body Text" / "Body-Text", or non-ASCII names) keep their own rules.
+fn class_names<'a>(names: impl Iterator<Item = &'a str>) -> BTreeMap<&'a str, String> {
+    let mut out = BTreeMap::new();
+    let mut used = std::collections::BTreeSet::new();
+    for name in names {
+        let base = slug(name);
+        let mut class = base.clone();
+        let mut n = 1;
+        while !used.insert(class.clone()) {
+            n += 1;
+            class = format!("{base}-{n}");
+        }
+        out.insert(name, class);
+    }
+    out
+}
+
+fn para_classes(st: &Styles) -> BTreeMap<&str, String> {
+    class_names(st.paragraph.iter().map(|s| s.name.as_str()))
+}
+
+fn char_classes(st: &Styles) -> BTreeMap<&str, String> {
+    class_names(st.character.iter().map(|s| s.name.as_str()))
+}
+
 fn hex(doc: &Document, swatch: &str, tint: f32) -> Option<String> {
     let c = doc.resolve_color(swatch, tint)?;
     let [r, g, b, _] = c.to_rgba8(1.0);
@@ -212,6 +239,7 @@ pub fn stylesheet(doc: &Document) -> String {
     let mut css = String::from(
         "body { margin: 0 5%; font-size: 1em; }\nfigure { margin: 1em 0; text-align: center; }\nfigure img { max-width: 100%; }\nh1, h2, h3 { font-size: inherit; margin: 0; }\n",
     );
+    let (pc, cc) = (para_classes(st), char_classes(st));
     for ps in &st.paragraph {
         if ps.name == designcraft_doc::NO_PARA_STYLE {
             continue;
@@ -224,7 +252,7 @@ pub fn stylesheet(doc: &Document) -> String {
         let mut rule = String::new();
         para_css(&pp, base, lead, &mut rule);
         char_css(doc, &cp, base, &mut rule);
-        let _ = writeln!(css, "p.{} {{ {rule}}}", slug(&ps.name));
+        let _ = writeln!(css, "p.{} {{ {rule}}}", pc[ps.name.as_str()]);
     }
     for cs in &st.character {
         if cs.name == story::NO_CHAR_STYLE {
@@ -249,7 +277,7 @@ pub fn stylesheet(doc: &Document) -> String {
         if let Some(sz) = c.size {
             let _ = write!(rule, "font-size: {:.3}em; ", sz / base);
         }
-        let _ = writeln!(css, "span.{} {{ {rule}}}", slug(&cs.name));
+        let _ = writeln!(css, "span.{} {{ {rule}}}", cc[cs.name.as_str()]);
     }
     css
 }
@@ -291,13 +319,15 @@ fn is_tag(t: &str, character: bool) -> bool {
 /// One story as XHTML paragraphs.
 pub fn story_html(doc: &Document, sid: StoryId) -> String {
     let Some(st) = doc.story(sid) else { return String::new() };
+    let (pc, cc) = (para_classes(&doc.styles), char_classes(&doc.styles));
     let mut out = String::new();
     for (pi, r) in st.para_ranges().iter().enumerate() {
         let pf = &st.paras[pi];
         // Export Tagging: the style's element and class.
         let et = doc.styles.export_tag(&pf.style, false);
         let tag = et.map(|e| e.tag.as_str()).filter(|t| is_tag(t, false)).unwrap_or("p");
-        let class = et.map(|e| e.class.clone()).filter(|c| !c.is_empty()).unwrap_or_else(|| slug(&pf.style));
+        let class =
+            et.map(|e| e.class.clone()).filter(|c| !c.is_empty()).or_else(|| pc.get(pf.style.as_str()).cloned()).unwrap_or_else(|| slug(&pf.style));
         let text_empty = st.text[r.clone()].trim().is_empty();
         let rtl = doc.styles.resolve_para(pf).0.direction == designcraft_doc::TextDirection::RightToLeft;
         let _ = write!(out, "<{tag} class=\"{class}\"{}>", if rtl { " dir=\"rtl\"" } else { "" });
@@ -330,7 +360,12 @@ pub fn story_html(doc: &Document, sid: StoryId) -> String {
             let et = (f.style != story::NO_CHAR_STYLE).then(|| doc.styles.export_tag(&f.style, true)).flatten();
             let ctag = et.map(|e| e.tag.as_str()).filter(|t| is_tag(t, true)).unwrap_or("span");
             let cls = if f.style != story::NO_CHAR_STYLE {
-                format!(" class=\"{}\"", et.map(|e| e.class.clone()).filter(|c| !c.is_empty()).unwrap_or_else(|| slug(&f.style)))
+                let class = et
+                    .map(|e| e.class.clone())
+                    .filter(|c| !c.is_empty())
+                    .or_else(|| cc.get(f.style.as_str()).cloned())
+                    .unwrap_or_else(|| slug(&f.style));
+                format!(" class=\"{class}\"")
             } else {
                 String::new()
             };
@@ -641,6 +676,43 @@ mod tests {
         z.by_name("OEBPS/style.css").unwrap().read_to_string(&mut css).unwrap();
         assert!(css.contains("p.basic-paragraph"));
         assert!(z.by_name("OEBPS/nav.xhtml").is_ok());
+    }
+
+    #[test]
+    fn styles_whose_names_slug_alike_keep_their_own_classes() {
+        let mut d = Document::new(&NewDocument::default());
+        let lid = d.default_layer();
+        for (name, size) in [("見出し", 30.0), ("本文", 10.0), ("Body Text", 12.0), ("Body-Text", 20.0)] {
+            d.styles_mut().paragraph.push(designcraft_doc::ParagraphStyle {
+                name: name.into(),
+                based_on: None,
+                next_style: None,
+                para: Default::default(),
+                chars: CharAttrs { size: Some(size), ..Default::default() },
+                shortcut: String::new(),
+            });
+        }
+        for (k, name) in ["見出し", "本文", "Body Text", "Body-Text"].into_iter().enumerate() {
+            let y = 36.0 + 100.0 * k as f64;
+            let pf = ParaFormat { style: name.into(), ..Default::default() };
+            d.add_text_frame(SpreadRef::Doc(0), Rect::new(36.0, y, 300.0, y + 50.0), lid, &format!("P{k}"), pf).unwrap();
+        }
+        let bytes = export_epub(&d, &EpubOptions::default()).unwrap();
+        let mut z = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
+        let mut html = String::new();
+        z.by_name("OEBPS/content.xhtml").unwrap().read_to_string(&mut html).unwrap();
+        let mut css = String::new();
+        z.by_name("OEBPS/style.css").unwrap().read_to_string(&mut css).unwrap();
+        let class_of = |text: &str| {
+            let end = html.find(&format!("\">{text}</p>")).unwrap();
+            let start = html[..end].rfind("class=\"").unwrap() + 7;
+            html[start..end].to_string()
+        };
+        let classes: Vec<String> = (0..4).map(|k| class_of(&format!("P{k}"))).collect();
+        for (k, c) in classes.iter().enumerate() {
+            assert!(!classes[..k].contains(c), "class `{c}` shared: {classes:?}");
+            assert_eq!(css.matches(&format!("p.{c} {{")).count(), 1, "one rule for `{c}`:\n{css}");
+        }
     }
 
     #[test]

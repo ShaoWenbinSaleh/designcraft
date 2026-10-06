@@ -114,12 +114,12 @@ pub fn specs() -> Vec<CommandSpec> {
             "Transform Panel",
             [],
             None,
-            "{x?, y?, width?, height?, scaleX? (%), scaleY? (%), rotation? (°), shear? (°), ref?: 0..8} — reference-point based geometry; rotation and shear are absolute (Transformations are Totals decides whether nested objects measure them on the pasteboard)",
+            "{x?, y?, width?, height?, scaleX? (%), scaleY? (%), rotation? (°), shear? (°), ref?: 0..8, ids?} — reference-point based geometry; rotation and shear are absolute (Transformations are Totals decides whether nested objects measure them on the pasteboard)",
             has_selection,
             transform_set
         ),
         cmd!(query "transform.info", "Transform Values", [], None, "{ids?} → {scaleX, scaleY (%), rotation, shear (°), content?: the same for a placed graphic} of the first target", has_selection, transform_info),
-        cmd!("object.arrange", "Arrange", ["Object", "Arrange"], None, "{to: front|forward|backward|back}", has_selection, arrange),
+        cmd!("object.arrange", "Arrange", ["Object", "Arrange"], None, "{to: front|forward|backward|back, ids?}", has_selection, arrange),
         cmd!("object.bringToFront", "Bring to Front", ["Object", "Arrange"], Some("Cmd+Shift+]"), "{}", has_selection, |s, _| s
             .execute("object.arrange", &json!({"to": "front"}))),
         cmd!("object.bringForward", "Bring Forward", ["Object", "Arrange"], Some("Cmd+]"), "{}", has_selection, |s, _| s
@@ -555,7 +555,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "Step and Repeat…",
             ["Edit"],
             Some("Cmd+Alt+U"),
-            "{count?: 1, dx?, dy?, rows?, columns?} — copies of the selection offset by (dx, dy); with rows/columns, a grid",
+            "{count?: 1, dx?, dy?, rows?, columns?, ids?} — copies of the selection (or ids) offset by (dx, dy); with rows/columns, a grid",
             has_selection,
             step_and_repeat
         ),
@@ -626,9 +626,7 @@ pub fn specs() -> Vec<CommandSpec> {
                     for c in 0..cols {
                         let x0 = rect.x0 + c as f64 * (cw + gutter);
                         let y0 = rect.y0 + r as f64 * (ch + gutter);
-                        let mut q = p.clone();
-                        q["rect"] = json!([x0, y0, x0 + cw, y0 + ch]);
-                        q["caret"] = json!(false);
+                        let q = super::with_param(&super::with_param(p, "rect", json!([x0, y0, x0 + cw, y0 + ch])), "caret", json!(false));
                         ids.push(frame_create(s, &q)?["id"].clone());
                     }
                 }
@@ -797,7 +795,7 @@ fn frame_create(s: &mut Session, p: &Value) -> Result<Value> {
     let content = str_param(p, "content").unwrap_or("graphic");
     let sr = spread_param(p, "spread");
     let lid = s.doc()?.active_layer;
-    let text = str_param(p, "text").unwrap_or("").to_string();
+    let text = super::text_param(p, "text");
     let caret = bool_or(p, "caret", content == "text");
     let vertical = bool_or(p, "vertical", false);
     let sides = p.get("sides").and_then(Value::as_u64).map_or(s.prefs.polygon_sides, |v| v as u32).clamp(3, 100);
@@ -1071,15 +1069,14 @@ fn transform_again(s: &mut Session, p: &Value) -> Result<Value> {
     if list.is_empty() {
         return Err(bad("transform.again", "no transform to repeat"));
     }
-    let steps: Vec<(String, Value)> = if bool_or(p, "sequence", false) { list.clone() } else { vec![list.last().cloned().expect("non-empty")] };
+    let steps: Vec<(String, Value)> = if bool_or(p, "sequence", false) { list.clone() } else { list.last().cloned().into_iter().collect() };
     let mut groups: Vec<Vec<ItemId>> = if bool_or(p, "individually", false) { ids.iter().map(|i| vec![*i]).collect() } else { vec![ids.clone()] };
     // Run the steps directly (no recording, one undo step for the whole repeat).
     let saved = s.transforms.clone();
     for (cmd, params) in &steps {
         let spec = super::find_command(cmd).ok_or_else(|| bad("transform.again", "unknown transform"))?;
         for g in &groups {
-            let mut q = params.clone();
-            q["ids"] = json!(g.iter().map(|i| i.0).collect::<Vec<_>>());
+            let q = super::with_param(params, "ids", json!(g.iter().map(|i| i.0).collect::<Vec<_>>()));
             (spec.run)(s, &q)?;
         }
         // Moving a copy selects the copies: later steps (and the next repeat) act on them.
@@ -1192,7 +1189,7 @@ fn transform_values(s: &mut Session, p: &Value, ids: &[ItemId], rf: usize) -> Re
             let delta = designcraft_geom::decompose::compose(&t) * lin(cur).inverse();
             // Δ in measuring space about `a`, brought into the item's container space.
             let m = parent.inverse() * Affine::translate(a.to_vec2()) * delta * Affine::translate(-a.to_vec2()) * parent;
-            let it = d.item_mut(*id).expect("found");
+            let it = d.item_mut(*id).ok_or(designcraft_doc::DocError::NoItem(*id))?;
             it.xf = m * it.xf;
             // Scale: relative to what is shown (frames show 100% — their scale lives in the geometry).
             if sx.is_some() || sy.is_some() {
@@ -1281,7 +1278,7 @@ fn arrange(s: &mut Session, p: &Value) -> Result<Value> {
             if loc.path.len() != 1 {
                 continue;
             }
-            let sp = d.spread_mut(loc.spread).expect("found");
+            let Some(sp) = d.spread_mut(loc.spread) else { continue };
             let i = loc.path[0];
             let n = sp.items.len();
             let it = sp.items.remove(i);
@@ -1333,7 +1330,7 @@ fn ungroup(s: &mut Session, p: &Value) -> Result<Value> {
             if loc.path.len() != 1 {
                 continue;
             }
-            let sp = d.spread_mut(loc.spread).expect("found");
+            let Some(sp) = d.spread_mut(loc.spread) else { continue };
             sp.items.remove(loc.path[0]);
             for (k, c) in items.iter().enumerate() {
                 let mut c = (**c).clone();
@@ -1711,7 +1708,7 @@ impl RemoveKeep for Document {
         if loc.path.len() != 1 {
             return Err(bad("object", "nested items can't be detached"));
         }
-        let sp = self.spread_mut(loc.spread).expect("found");
+        let sp = self.spread_mut(loc.spread).ok_or(designcraft_doc::DocError::NoItem(id))?;
         Ok(Arc::unwrap_or_clone(sp.items.remove(loc.path[0])))
     }
 }
@@ -2370,5 +2367,57 @@ mod gap_tests {
         assert_eq!((bb(&s, a).x1, bb(&s, b).x0), (230.0, 250.0), "the gap moved, its width kept");
         assert_eq!(bb(&s, b).x1, 320.0);
         assert!(s.execute("gap.move", &json!({"at": [150, 200], "delta": 5})).is_err(), "inside an object");
+    }
+}
+
+#[cfg(test)]
+mod line_end_tests {
+    use super::*;
+
+    /// "One\rTwo" made one paragraph (the CR stayed in the text) instead of two.
+    #[test]
+    fn carriage_returns_separate_paragraphs() {
+        let mut s = Session::new();
+        s.execute("file.new", &json!({})).unwrap();
+        let r = s.execute("frame.create", &json!({"rect": [36, 36, 300, 300], "content": "text", "text": "One\rTwo\r\nThree"})).unwrap();
+        let sid = designcraft_doc::StoryId(r["story"].as_u64().unwrap());
+        let story = |s: &Session| s.doc().unwrap().doc.story(sid).unwrap().clone();
+        assert_eq!(story(&s).text, "One\nTwo\nThree");
+        assert_eq!(story(&s).paras.len(), 3);
+        // The caret is at the end: typed text gets the same treatment.
+        s.execute("text.insert", &json!({"text": "\rFour", "raw": true})).unwrap();
+        assert_eq!(story(&s).text, "One\nTwo\nThree\nFour");
+        assert_eq!(story(&s).paras.len(), 4);
+    }
+}
+
+#[cfg(test)]
+mod named_target_tests {
+    use super::*;
+
+    /// With a text caret (or nothing) selected, a command given `ids` failed
+    /// with "command `object.textFrameOptions` is not available right now: nothing selected".
+    #[test]
+    fn ids_act_without_a_selection() {
+        let mut s = Session::new();
+        s.execute("file.new", &json!({})).unwrap();
+        let r = s.execute("frame.create", &json!({"rect": [36, 36, 300, 300], "content": "text", "text": "Hello"})).unwrap();
+        assert!(s.doc().unwrap().selection.items.is_empty(), "frame.create leaves a text caret");
+        let e = s.execute("object.textFrameOptions", &json!({"columns": 2})).unwrap_err().to_string();
+        assert!(e.contains("nothing selected"), "{e}");
+        s.execute("object.textFrameOptions", &json!({"ids": [r["id"]], "columns": 2})).unwrap();
+        let id = ItemId(r["id"].as_u64().unwrap());
+        let columns = |s: &Session| s.doc().unwrap().doc.item(id).and_then(|i| i.text_frame().map(|t| t.options.columns));
+        assert_eq!(columns(&s), Some(2));
+        s.execute("transform.set", &json!({"id": r["id"], "x": 100, "ref": 0})).unwrap();
+        let e = s.execute("object.textFrameOptions", &json!({"ids": [99999], "columns": 1})).unwrap_err().to_string();
+        assert!(e.contains("no object with id 99999"), "{e}");
+        assert_eq!(columns(&s), Some(2));
+        // An empty `ids` names nothing (as `targets` reads it), even beside an `id`.
+        let e = s.execute("object.textFrameOptions", &json!({"ids": [], "id": r["id"], "columns": 3})).unwrap_err().to_string();
+        assert!(e.contains("nothing selected"), "{e}");
+        assert_eq!(columns(&s), Some(2));
+        // Commands documented with `ids` honour `id` too.
+        assert_eq!(s.execute("conveyor.collect", &json!({"id": r["id"]})).unwrap()["count"], 1);
     }
 }

@@ -6,6 +6,7 @@
 //!
 //! Coordinates are points, y down. Each spread has its own space: pages sit side by side from
 //! x = 0 with their tops at y = 0. Items live in spread space via `Item::xf`.
+#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 #![forbid(unsafe_code)]
 
 pub mod anchored;
@@ -67,6 +68,10 @@ pub enum DocError {
 }
 
 pub type Result<T> = std::result::Result<T, DocError>;
+
+/// Largest `next_id` a valid document has (ids count up from it; 2^53 also stays exact in JSON
+/// readers that use doubles).
+pub const MAX_NEXT_ID: u64 = 1 << 53;
 
 /// Edit › Transparency Blend Space: the colour space transparency is flattened in (CMYK for
 /// print documents, RGB for screen ones, as InDesign defaults).
@@ -715,6 +720,10 @@ impl Document {
         }
         if self.next_id < ids.iter().copied().max().unwrap_or(0) {
             return Err(DocError::Invalid("next_id behind existing ids".into()));
+        }
+        // Ids are allocated by counting up from `next_id`: leave room so that can't overflow.
+        if self.next_id > MAX_NEXT_ID {
+            return Err(DocError::Invalid(format!("next_id {} out of range", self.next_id)));
         }
         Ok(())
     }

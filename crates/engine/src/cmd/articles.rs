@@ -20,7 +20,10 @@ pub fn specs() -> Vec<CommandSpec> {
                 let name = match want {
                     Some(n) if d.articles.iter().any(|a| a.name == n) => return Err(bad("article.new", format!("an article named `{n}` exists"))),
                     Some(n) => n,
-                    None => (1..).map(|i| format!("Article {i}")).find(|n| !d.articles.iter().any(|a| a.name == *n)).expect("free"),
+                    None => (1..=d.articles.len() + 1)
+                        .map(|i| format!("Article {i}"))
+                        .find(|n| !d.articles.iter().any(|a| a.name == *n))
+                        .ok_or_else(|| bad("article.new", "no free article name"))?,
                 };
                 d.articles.push(Article { name: name.clone(), items: ids.into_iter().filter(|i| d.item(*i).is_some()).collect(), export: true });
                 Ok(json!({"name": name}))

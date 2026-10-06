@@ -88,8 +88,9 @@ fn erase_or_smooth(s: &mut Session, p: &Value, smooth: bool) -> Result<Value> {
         };
         let on: Vec<(usize, f64)> = hits.iter().filter(|h| h.0 == si).map(|h| (h.1, h.2)).collect();
         let k = |a: &(usize, f64)| a.0 as f64 + a.1;
-        let a = *on.iter().min_by(|x, y| k(x).total_cmp(&k(y))).expect("hits");
-        let b = *on.iter().max_by(|x, y| k(x).total_cmp(&k(y))).expect("hits");
+        let (Some(&a), Some(&b)) = (on.iter().min_by(|x, y| k(x).total_cmp(&k(y))), on.iter().max_by(|x, y| k(x).total_cmp(&k(y)))) else {
+            return Err(bad(cmd, "the drag didn't touch the path"));
+        };
         let sp = it.path.subpaths[si].clone();
         if smooth {
             it.path.subpaths[si] = designcraft_geom::edit_path::smooth(&sp, a, b, tol * scale);

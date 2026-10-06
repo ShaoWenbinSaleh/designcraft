@@ -104,7 +104,7 @@ pub fn import(bytes: &[u8]) -> Result<Imported, ImportError> {
     let mut char_styles: Vec<String> = Vec::new();
     let mut warnings = Vec::new();
     let push = |paras: &mut Vec<(String, Vec<(String, CharFormat)>)>, c: char, fmt: &CharFormat| {
-        let runs = &mut paras.last_mut().expect("one paragraph").1;
+        let Some((_, runs)) = paras.last_mut() else { return };
         match runs.last_mut() {
             Some((t, f)) if f == fmt => t.push(c),
             _ => runs.push((c.to_string(), fmt.clone())),
@@ -153,7 +153,9 @@ pub fn import(bytes: &[u8]) -> Result<Imported, ImportError> {
                         if !v.is_empty() && !para_styles.contains(&v) {
                             para_styles.push(v.clone());
                         }
-                        paras.last_mut().expect("one paragraph").0 = v;
+                        if let Some(p) = paras.last_mut() {
+                            p.0 = v;
+                        }
                     }
                     "CharStyle" => {
                         let v = value.trim();

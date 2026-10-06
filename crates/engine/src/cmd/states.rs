@@ -3,7 +3,7 @@
 use designcraft_doc::{ItemId, Shape};
 use serde_json::{Value, json};
 
-use super::{CommandSpec, bad, cmd, has_selection, ids_param};
+use super::{CommandSpec, bad, cmd, has_selection};
 use crate::{Result, Session};
 
 fn target(s: &Session, p: &Value) -> Result<ItemId> {
@@ -24,7 +24,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "{ids? (default: the selection; one group's objects or several objects become states)} → {id, states}",
             has_selection,
             |s, p| {
-                let ids = ids_param(p, "ids").unwrap_or_else(|| s.active().map(|d| d.selection.items.clone()).unwrap_or_default());
+                let ids = super::targets(s, p)?;
                 let single_group = ids.len() == 1 && s.doc()?.doc.item(ids[0]).is_some_and(|it| it.shape == Shape::Group && it.children().len() > 1);
                 let gid = if single_group {
                     ids[0]

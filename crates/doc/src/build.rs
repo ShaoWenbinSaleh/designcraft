@@ -544,7 +544,8 @@ impl Document {
         let page = self.page(abs)?;
         let pi = self.parent_index(page.parent?)?;
         let ps = &self.parents[pi];
-        let idx = if ps.pages.len() >= 2 && page.side == PageSide::Left { 0 } else { ps.pages.len() - 1 };
+        // A parent spread can come without pages from a file.
+        let idx = if ps.pages.len() >= 2 && page.side == PageSide::Left { 0 } else { ps.pages.len().checked_sub(1)? };
         Some((pi, idx))
     }
 }
@@ -565,6 +566,18 @@ mod tests {
         assert_eq!(d.parents.len(), 1);
         assert_eq!(d.parents[0].pages.len(), 2);
         d.check().unwrap();
+    }
+
+    /// A document whose parent spread has no pages passes `check()`; showing the parent behind a
+    /// page used to compute index `0 - 1`.
+    #[test]
+    fn parent_without_pages_is_not_shown() {
+        let mut d = Document::new(&NewDocument { pages: 2, ..Default::default() });
+        assert!(d.parent_page_for(0).is_some());
+        Arc::make_mut(&mut d.parents[0]).pages.clear();
+        d.check().unwrap();
+        assert_eq!(d.parent_page_for(0), None);
+        assert_eq!(d.parent_page_for(1), None);
     }
 
     #[test]

@@ -14,18 +14,40 @@
 //! designcraft-cli links                   # Discord, website, app page and GitHub links
 //! designcraft-cli --version               # print the version
 //! ```
+#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 use std::process::ExitCode;
+
+/// `println!` that ends the program quietly when stdout is closed (`designcraft-cli commands |
+/// head`) instead of panicking with "failed printing to stdout: Broken pipe (os error 32)".
+macro_rules! outln {
+    ($($arg:tt)*) => {{
+        use std::io::Write as _;
+        if let Err(e) = writeln!(std::io::stdout(), $($arg)*) {
+            $crate::stdout_failed(e);
+        }
+    }};
+}
 
 mod perf;
 
 use designcraft_engine::Session;
 use serde_json::{Value, json};
 
+/// stdout went away. A reader that stopped early (a closed pipe) ends the program quietly, as
+/// ripgrep does; any other write error is reported.
+fn stdout_failed(e: std::io::Error) -> ! {
+    if e.kind() == std::io::ErrorKind::BrokenPipe {
+        std::process::exit(0);
+    }
+    eprintln!("designcraft-cli: can't write to stdout: {e}");
+    std::process::exit(1);
+}
+
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.first().map(String::as_str) {
         Some("--version" | "-V" | "version") => {
-            println!("designcraft-cli {}", env!("CARGO_PKG_VERSION"));
+            outln!("designcraft-cli {}", env!("CARGO_PKG_VERSION"));
             ExitCode::SUCCESS
         }
         Some("run") => report(run(&args[1..])),
@@ -39,7 +61,7 @@ fn main() -> ExitCode {
                 .into_iter()
                 .filter(|c| filter.as_ref().is_none_or(|f| c.to_string().to_lowercase().contains(f.as_str())))
                 .collect();
-            println!("{}", serde_json::to_string_pretty(&list).unwrap_or_default());
+            outln!("{}", serde_json::to_string_pretty(&list).unwrap_or_default());
             ExitCode::SUCCESS
         }
         Some("describe") => report(describe(args.get(1).map(String::as_str))),
@@ -50,7 +72,7 @@ fn main() -> ExitCode {
         Some("bench") => report(perf::bench(&args[1..])),
         Some("links") => {
             use designcraft_engine::links::*;
-            println!("Discord   {DISCORD}\nWebsite   {WEBSITE}\nApp page  {APP_PAGE}\nGitHub    {GITHUB}\nIssues    {ISSUES}");
+            outln!("Discord   {DISCORD}\nWebsite   {WEBSITE}\nApp page  {APP_PAGE}\nGitHub    {GITHUB}\nIssues    {ISSUES}");
             ExitCode::SUCCESS
         }
         _ => {
@@ -147,7 +169,7 @@ fn run(args: &[String]) -> Result<(), String> {
                 let r = s.execute(id, &p).map_err(|e| e.to_string())?;
                 results.push(r.clone());
                 if !r.is_null() {
-                    println!("{}", serde_json::to_string(&r).unwrap_or_default());
+                    outln!("{}", serde_json::to_string(&r).unwrap_or_default());
                 }
             }
             "--page" => page = val()?.parse().map_err(|_| "bad --page")?,
@@ -231,7 +253,7 @@ fn describe(id: Option<&str>) -> Result<(), String> {
         o.remove("enabled");
         o.remove("disabled_reason");
     }
-    println!("{}", serde_json::to_string_pretty(&c).unwrap_or_default());
+    outln!("{}", serde_json::to_string_pretty(&c).unwrap_or_default());
     Ok(())
 }
 
@@ -316,7 +338,7 @@ fn script(args: &[String]) -> Result<(), String> {
             }
         }
     }
-    println!("{}", serde_json::to_string_pretty(&report.to_json()).unwrap_or_default());
+    outln!("{}", serde_json::to_string_pretty(&report.to_json()).unwrap_or_default());
     match report.failed {
         Some((i, c, e)) => Err(format!("step {i} ({c}) failed: {e}")),
         None => Ok(()),
@@ -349,6 +371,6 @@ fn app(args: &[String]) -> Result<(), String> {
             r.call("engine.execute", json!({"command": cmd, "params": json_arg(rest.get(1))?}))?
         }
     };
-    println!("{}", serde_json::to_string_pretty(&out).unwrap_or_default());
+    outln!("{}", serde_json::to_string_pretty(&out).unwrap_or_default());
     Ok(())
 }

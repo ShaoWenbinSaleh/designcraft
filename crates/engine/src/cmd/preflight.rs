@@ -82,8 +82,10 @@ pub fn check(s: &Session, min_ppi: f64) -> Vec<Issue> {
                             page,
                         }),
                         Some(a) => {
-                            if let Some((pw, _)) = a.pixels {
-                                // Effective ppi: pixels per inch at the placed size.
+                            // Effective ppi: pixels per inch at the placed size. Placed PDF and
+                            // SVG pages export as vectors; their `pixels` is only the preview's.
+                            let vector = designcraft_images::is_pdf(&a.data) || designcraft_images::is_svg(&a.data);
+                            if let Some((pw, _)) = a.pixels.filter(|_| !vector) {
                                 let placed_w = (g.xf * it.xf).as_coeffs()[0].hypot((g.xf * it.xf).as_coeffs()[1]) * g.size.0;
                                 let ppi = pw as f64 / (placed_w / 72.0).max(1e-6);
                                 if d.settings.intent == Intent::Print && ppi < min_ppi {
@@ -128,4 +130,32 @@ fn run(s: &mut Session, p: &Value) -> Result<Value> {
     let issues = check(s, min);
     let errors = issues.iter().filter(|i| i.severity == "error").count();
     Ok(json!({"errors": errors, "warnings": issues.len() - errors, "issues": issues}))
+}
+
+#[cfg(test)]
+mod placed_vector_tests {
+    use serde_json::json;
+
+    use crate::Session;
+    use crate::cmd::base64_encode;
+
+    /// A placed PDF logo was reported as
+    /// "logo.pdf: effective 72 ppi (< 150)", though it exports as vectors.
+    #[test]
+    fn vector_graphics_have_no_resolution() {
+        let mut logo = Session::new();
+        logo.execute("file.new", &json!({"width": 100, "height": 50})).unwrap();
+        let pdf = logo.execute("file.exportPdf", &json!({})).unwrap();
+        let mut s = Session::new();
+        s.execute("file.new", &json!({})).unwrap();
+        s.execute("file.place", &json!({"base64": pdf["base64"], "name": "logo.pdf", "x": 72, "y": 72, "width": 300})).unwrap();
+        // Deselect the logo, or the photo would replace it in its frame.
+        s.execute("selection.set", &json!({"ids": []})).unwrap();
+        let png = designcraft_render::Rendered { width: 40, height: 20, pixels: vec![200; 40 * 20 * 4] }.to_png();
+        s.execute("file.place", &json!({"base64": base64_encode(&png), "name": "photo.png", "x": 72, "y": 300, "width": 300})).unwrap();
+        let r = s.execute("preflight.run", &json!({})).unwrap();
+        let low: Vec<&str> =
+            r["issues"].as_array().unwrap().iter().filter(|i| i["kind"] == "lowResolution").map(|i| i["message"].as_str().unwrap()).collect();
+        assert_eq!(low, ["photo.png: effective 10 ppi (< 150)"]);
+    }
 }
