@@ -39,6 +39,10 @@ fn has_library(s: &Session) -> std::result::Result<(), String> {
     if s.library.is_some() { Ok(()) } else { Err("no library open".into()) }
 }
 
+fn no_library() -> crate::EngineError {
+    bad("library", "no library open")
+}
+
 pub fn specs() -> Vec<CommandSpec> {
     vec![
         cmd!(noundo "library.new", "New Library", ["File", "New"], None, "{path?} — an empty Object Library (saved to `path` when given)", always, |s, p| {
@@ -66,11 +70,11 @@ pub fn specs() -> Vec<CommandSpec> {
             Ok(json!({"items": n}))
         }),
         cmd!(query "library.list", "Library Items", [], None, "{} → [{index, name, description}]", has_library, |s, _| {
-            let lib = s.library.as_ref().expect("enabled");
+            let lib = s.library.as_ref().ok_or_else(no_library)?;
             Ok(Value::Array(lib.items.iter().enumerate().map(|(i, it)| json!({"index": i, "name": it.name, "description": it.description})).collect()))
         }),
         cmd!(query "library.json", "Library Contents", [], None, "{} → the library as JSON text (to save where there's no file system)", has_library, |s, _| {
-            Ok(json!({"json": serde_json::to_string(s.library.as_ref().expect("enabled")).unwrap_or_default()}))
+            Ok(json!({"json": serde_json::to_string(s.library.as_ref().ok_or_else(no_library)?).unwrap_or_default()}))
         }),
         cmd!(noundo "library.add", "Add Item", [], None, "{name?, description?} — the selection → {index}", has_selection, |s, p| {
             has_library(s).map_err(|e| bad("library.add", e))?;
@@ -82,7 +86,7 @@ pub fn specs() -> Vec<CommandSpec> {
                 let n = st.selection.items.len();
                 (str_param(p, "name").map(str::to_string).unwrap_or_else(|| if n > 1 { format!("{n} objects") } else { kind.clone() }), str_param(p, "description").unwrap_or("").to_string())
             };
-            let lib = s.library.as_mut().expect("checked");
+            let lib = s.library.as_mut().ok_or_else(no_library)?;
             lib.items.push(LibraryItem { name, description, snippet: super::file::base64_encode(&snip) });
             lib.save()?;
             Ok(json!({"index": lib.items.len() - 1}))
@@ -98,13 +102,12 @@ pub fn specs() -> Vec<CommandSpec> {
                 let lib = s.library.as_ref().ok_or_else(|| bad("library.place", "no library open"))?;
                 let i = p.get("index").and_then(Value::as_u64).ok_or_else(|| bad("library.place", "`index` required"))? as usize;
                 let it = lib.items.get(i).ok_or_else(|| bad("library.place", format!("no item {i}")))?;
-                let mut q = p.clone();
-                q["base64"] = json!(it.snippet);
+                let q = super::with_param(p, "base64", json!(it.snippet));
                 super::file::snippet_place(s, &q)
             }
         ),
         cmd!(noundo "library.remove", "Delete Item", [], None, "{index}", has_library, |s, p| {
-            let lib = s.library.as_mut().expect("enabled");
+            let lib = s.library.as_mut().ok_or_else(no_library)?;
             let i = p.get("index").and_then(Value::as_u64).ok_or_else(|| bad("library.remove", "`index` required"))? as usize;
             if i >= lib.items.len() {
                 return Err(bad("library.remove", format!("no item {i}")));
@@ -114,7 +117,7 @@ pub fn specs() -> Vec<CommandSpec> {
             ok()
         }),
         cmd!(noundo "conveyor.collect", "Collect", [], None, "{ids? (default: the selection)} — each object onto the Content Collector conveyor → {count}", has_selection, |s, p| {
-            let ids = super::ids_param(p, "ids").unwrap_or_else(|| s.active().map(|d| d.selection.items.clone()).unwrap_or_default());
+            let ids = super::targets(s, p)?;
             let keep = s.active().map(|d| d.selection.clone());
             for id in ids {
                 let name = s.doc()?.doc.item(id).map(|it| it.default_label().trim_matches(|c| c == '<' || c == '>').to_string()).unwrap_or_default();
@@ -139,8 +142,7 @@ pub fn specs() -> Vec<CommandSpec> {
             |s, p| {
                 let i = p.get("index").and_then(Value::as_u64).unwrap_or(0) as usize;
                 let (_, snip) = s.conveyor.get(i).cloned().ok_or_else(|| bad("conveyor.place", "the conveyor is empty"))?;
-                let mut q = p.clone();
-                q["base64"] = json!(super::file::base64_encode(&snip));
+                let q = super::with_param(p, "base64", json!(super::file::base64_encode(&snip)));
                 let r = super::file::snippet_place(s, &q)?;
                 if !p.get("keep").and_then(Value::as_bool).unwrap_or(false) {
                     s.conveyor.remove(i);

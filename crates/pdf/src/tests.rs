@@ -111,6 +111,21 @@ fn colours_keep_their_space() {
     assert!(s.contains("/Separation") && s.contains("/PANTONE#20Test"), "spot as Separation");
 }
 
+/// [Paper] went into print PDFs as `1 1 1 rg`, DeviceRGB white.
+#[test]
+fn paper_prints_as_no_ink() {
+    let mut d = doc_with_text("x");
+    add_box(&mut d, Rect::new(36.0, 400.0, 136.0, 500.0), "[Paper]");
+    let s = uncompressed(&d, PdfOptions::default());
+    assert!(s.contains("0 0 0 0 k"), "CMYK, no ink");
+    assert!(!s.contains("1 1 1 rg"), "no RGB white");
+    // A web document keeps the paper colour.
+    d.settings.intent = designcraft_doc::Intent::Web;
+    assert!(uncompressed(&d, PdfOptions::default()).contains("1 1 1 rg"));
+    // PDF/X has a CMYK output intent whatever the document's intent.
+    assert!(!uncompressed(&d, PdfOptions { standard: Standard::PdfX4, ..Default::default() }).contains("1 1 1 rg"));
+}
+
 #[test]
 fn boxes_bleed_and_marks() {
     let mut d = doc_with_text("x");

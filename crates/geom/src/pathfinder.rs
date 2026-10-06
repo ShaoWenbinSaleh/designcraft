@@ -67,14 +67,18 @@ fn from_flo(paths: &[SimpleBezierPath]) -> PathData {
         }
         let mut anchors = vec![Anchor::corner(p(start))];
         for (c1, c2, end) in curves {
-            anchors.last_mut().expect("non-empty").h_out = p(c1);
+            if let Some(prev) = anchors.last_mut() {
+                prev.h_out = p(c1);
+            }
             let mut a = Anchor::corner(p(end));
             a.h_in = p(c2);
             anchors.push(a);
         }
         // The last curve comes back to the start: fold its end into the first anchor.
-        if anchors.len() > 2 && anchors.last().expect("non-empty").p.distance(anchors[0].p) < 1e-6 {
-            let last = anchors.pop().expect("non-empty");
+        if anchors.len() > 2
+            && anchors.last().is_some_and(|l| l.p.distance(anchors[0].p) < 1e-6)
+            && let Some(last) = anchors.pop()
+        {
             anchors[0].h_in = last.h_in;
         }
         for a in &mut anchors {

@@ -2,6 +2,7 @@
 //! Rasters go through `image` (PNG, JPEG, GIF, WebP, TIFF, BMP) or `psd` (Photoshop's merged
 //! composite); SVG is parsed with usvg (text set in the bundled fonts) and rasterised with resvg
 //! for the screen — PDF export draws the same tree as vectors.
+#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 use std::sync::{Arc, OnceLock};
 
@@ -57,6 +58,10 @@ fn svg_options() -> &'static usvg::Options<'static> {
         let mut db = usvg::fontdb::Database::new();
         for f in designcraft_fonts::bundled() {
             db.load_font_data(f.to_vec());
+        }
+        // Japanese text in SVGs: the craft-fonts faces (none without CRAFT_FONTS_DIR).
+        for f in designcraft_fonts::japanese_document_fonts() {
+            db.load_font_data(f.bytes.to_vec());
         }
         db.set_serif_family("Source Serif 4");
         db.set_sans_serif_family("Source Sans 3");

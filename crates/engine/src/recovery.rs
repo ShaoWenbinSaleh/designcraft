@@ -67,7 +67,12 @@ pub fn list(dir: &Path) -> Vec<(u64, Value)> {
             continue;
         }
         let Some(uid) = p.file_stem().and_then(|s| s.to_str()).and_then(|s| s.parse::<u64>().ok()) else { continue };
-        let meta = std::fs::read_to_string(p.with_extension("json")).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or(json!({}));
+        // Metadata is a file on disk: anything but an object (corrupt, hand-edited) counts as none.
+        let meta = std::fs::read_to_string(p.with_extension("json"))
+            .ok()
+            .and_then(|t| serde_json::from_str::<Value>(&t).ok())
+            .filter(Value::is_object)
+            .unwrap_or(json!({}));
         out.push((uid, meta));
     }
     out.sort_by_key(|e| e.0);
@@ -132,6 +137,22 @@ mod tests {
 #[cfg(test)]
 mod file_tests {
     use super::*;
+
+    /// `file.recovery.list` adds `uid` to each entry's metadata: metadata that wasn't an object
+    /// (a corrupt `.json` beside the recovery file) panicked on `m["uid"] = …`.
+    #[test]
+    fn corrupt_recovery_metadata_is_ignored() {
+        let dir = std::env::temp_dir().join(format!("dc-recovery-corrupt-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("7.designcraft"), b"not a document").unwrap();
+        std::fs::write(dir.join("7.json"), b"[1, 2]").unwrap();
+        let mut s = Session::new();
+        s.recovery_dir = Some(dir.clone());
+        let r = s.execute("file.recovery.list", &json!({})).unwrap();
+        assert_eq!(r[0]["uid"], json!(7));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn revert_and_save_a_copy() {

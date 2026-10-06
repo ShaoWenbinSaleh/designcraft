@@ -136,13 +136,14 @@ fn build_line(db: &FontDb, cs: &ComposedStory, l: &Line, vertical: bool) -> Line
             // Upright in vertical text.
             a = turn * a;
         }
-        let bp = match runs.iter_mut().find(|r| r.0 == g.style) {
-            Some(r) => &mut r.1,
+        let k = match runs.iter().position(|r| r.0 == g.style) {
+            Some(k) => k,
             None => {
                 runs.push((g.style, BezPath::new()));
-                &mut runs.last_mut().expect("pushed").1
+                runs.len() - 1
             }
         };
+        let bp = &mut runs[k].1;
         for el in outline.elements() {
             bp.push(transform_el(a, *el));
         }

@@ -83,7 +83,7 @@ fn qr_code(s: &mut Session, p: &Value) -> Result<Value> {
                     let quiet = side / (n + 4) as f64 * 2.0;
                     let r = Rect::from_center_size(b.center(), (side + 2.0 * quiet, side + 2.0 * quiet));
                     let fresh = qr_item(t, it.layer, &text, r, &color).map_err(|e| bad(ID, e))?;
-                    let it = d.item_mut(t).expect("found");
+                    let it = d.item_mut(t).ok_or(designcraft_doc::DocError::NoItem(t))?;
                     it.path = fresh.path;
                     it.fill = fresh.fill;
                     it.alt_text = fresh.alt_text;
@@ -95,7 +95,7 @@ fn qr_code(s: &mut Session, p: &Value) -> Result<Value> {
                     }
                     let id = ItemId(d.alloc());
                     let code = qr_item(id, it.layer, &text, it.inner_bounds(), &color).map_err(|e| bad(ID, e))?;
-                    let f = d.item_mut(t).expect("found");
+                    let f = d.item_mut(t).ok_or(designcraft_doc::DocError::NoItem(t))?;
                     f.content = Content::Group { items: vec![std::sync::Arc::new(code)] };
                     t
                 }

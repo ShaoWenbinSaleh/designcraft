@@ -24,7 +24,7 @@ impl Default for Headless {
 pub(crate) const NEEDS_APP: &str = "it needs the desktop app: start `designcraft --control 7979` and run the MCP server \
 with `designcraft-cli mcp --connect 7979`";
 
-const VIEW: ViewInfo = ViewInfo { zoom: 1.0 };
+const VIEW: ViewInfo = ViewInfo::at_zoom(1.0);
 
 fn s<'a>(p: &'a Value, k: &str) -> Option<&'a str> {
     p.get(k).and_then(Value::as_str)

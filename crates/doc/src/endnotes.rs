@@ -176,7 +176,8 @@ impl crate::Document {
         if cur.text == fresh.text && cur.paras == fresh.paras && cur.chars == fresh.chars {
             return;
         }
-        let st = Arc::make_mut(self.stories.get_mut(&sid).expect("checked"));
+        let Some(st) = self.stories.get_mut(&sid) else { return };
+        let st = Arc::make_mut(st);
         let (frames, rev) = (std::mem::take(&mut st.frames), st.rev);
         *st = Story { frames, rev: rev + 1, ..fresh };
     }

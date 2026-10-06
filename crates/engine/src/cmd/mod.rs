@@ -114,9 +114,12 @@ pub fn always(_: &Session) -> std::result::Result<(), String> {
 pub fn has_doc(s: &Session) -> std::result::Result<(), String> {
     s.active().map(|_| ()).ok_or_else(|| "no document open".into())
 }
+/// Why [`has_selection`] disables a command. A command that documents `ids` still runs when the
+/// call names its objects (see [`named_targets`]).
+pub const NOTHING_SELECTED: &str = "nothing selected";
 pub fn has_selection(s: &Session) -> std::result::Result<(), String> {
     has_doc(s)?;
-    if s.active().is_some_and(|d| !d.selection.items.is_empty()) { Ok(()) } else { Err("nothing selected".into()) }
+    if s.active().is_some_and(|d| !d.selection.items.is_empty()) { Ok(()) } else { Err(NOTHING_SELECTED.into()) }
 }
 pub fn has_text(s: &Session) -> std::result::Result<(), String> {
     has_doc(s)?;
@@ -216,6 +219,13 @@ pub fn find_command(id: &str) -> Option<&'static CommandSpec> {
 pub(crate) fn bad(cmd: &str, msg: impl Into<String>) -> EngineError {
     EngineError::BadParams { cmd: cmd.into(), msg: msg.into() }
 }
+/// `p` with `key` set to `v`. Parameters come from callers (control channel, MCP, scripts) and
+/// may not be an object: `p[key] = v` panics on an array or a string, so start from `{}` then.
+pub(crate) fn with_param(p: &Value, key: &str, v: Value) -> Value {
+    let mut m = p.as_object().cloned().unwrap_or_default();
+    m.insert(key.to_string(), v);
+    Value::Object(m)
+}
 pub(crate) fn f64_or(p: &Value, key: &str, default: f64) -> f64 {
     p.get(key).and_then(Value::as_f64).unwrap_or(default)
 }
@@ -224,6 +234,12 @@ pub(crate) fn bool_or(p: &Value, key: &str, default: bool) -> bool {
 }
 pub(crate) fn str_param<'a>(p: &'a Value, key: &str) -> Option<&'a str> {
     p.get(key).and_then(Value::as_str)
+}
+/// Plain text from a parameter, with CR LF and lone CR (classic Mac and InDesign line ends) as
+/// `\n`, the paragraph separator, as edit.paste and text import already do. Kept as they were,
+/// the CRs joined the paragraphs into one.
+pub(crate) fn text_param(p: &Value, key: &str) -> String {
+    str_param(p, key).unwrap_or("").replace("\r\n", "\n").replace('\r', "\n")
 }
 pub(crate) fn id_param(p: &Value, key: &str) -> Option<ItemId> {
     p.get(key).and_then(Value::as_u64).map(ItemId)
@@ -247,6 +263,19 @@ pub(crate) fn spread_param(p: &Value, key: &str) -> SpreadRef {
         Some(v) => serde_json::from_value(v.clone()).unwrap_or(SpreadRef::Doc(0)),
         None => SpreadRef::Doc(0),
     }
+}
+
+/// The objects a call names with a non-empty `ids` or an `id`, for a command whose params
+/// document `ids` (it acts on [`targets`]). `None` when the call names none.
+pub(crate) fn named_targets(spec: &CommandSpec, p: &Value) -> Option<Vec<ItemId>> {
+    if !spec.params.split(|c: char| !c.is_ascii_alphanumeric()).any(|w| w == "ids") {
+        return None;
+    }
+    // As `targets` reads them: `ids`, when given, wins over `id` (an empty list names nothing).
+    if let Some(ids) = ids_param(p, "ids") {
+        return (!ids.is_empty()).then_some(ids);
+    }
+    id_param(p, "id").map(|i| vec![i])
 }
 
 /// Targets: `ids` / `id` params or the selection.

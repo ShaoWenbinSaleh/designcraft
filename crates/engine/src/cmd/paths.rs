@@ -145,7 +145,7 @@ fn pathfinder(s: &mut Session, p: &Value) -> Result<Value> {
         if order.len() < 2 {
             return Err(bad("object.pathfinder", "select two or more shapes on one spread (not text frames or groups)"));
         }
-        let keep = if op == Op::MinusBack { *order.last().expect("two") } else { order[0] };
+        let keep = if op == Op::MinusBack { order[order.len() - 1] } else { order[0] };
         let shapes: Vec<PathData> =
             order.iter().filter_map(|id| spread_xf(d, *id).and_then(|(_, xf)| Some(d.item(*id)?.path.transformed(xf)))).collect();
         let Some(result) = combine(op, &shapes) else { return Err(bad("object.pathfinder", "the shapes don't overlap: nothing is left")) };
@@ -257,13 +257,14 @@ fn create_outlines(s: &mut Session, p: &Value) -> Result<Value> {
                     let skew = if st.skew != 0.0 { Affine::new([1.0, 0.0, -st.skew.to_radians().tan(), 1.0, 0.0, 0.0]) } else { Affine::IDENTITY };
                     let a = Affine::translate((g.x, l.baseline + g.y)) * skew * Affine::scale_non_uniform(g.sx, g.sy);
                     let key = (st.fill.clone(), st.fill_tint, st.stroke.clone(), st.stroke_tint, st.stroke_weight);
-                    let bp = match runs.iter_mut().find(|r| r.0 == key) {
-                        Some(r) => &mut r.1,
+                    let k = match runs.iter().position(|r| r.0 == key) {
+                        Some(k) => k,
                         None => {
                             runs.push((key, BezPath::new()));
-                            &mut runs.last_mut().expect("pushed").1
+                            runs.len() - 1
                         }
                     };
+                    let bp = &mut runs[k].1;
                     bp.extend((a * outline.as_ref().clone()).elements().iter().copied());
                 }
             }
@@ -285,8 +286,10 @@ fn create_outlines(s: &mut Session, p: &Value) -> Result<Value> {
             };
             let mut parts: Vec<Item> = runs.into_iter().map(|r| make(d, r)).collect();
             d.remove_item(*id)?;
-            let new = if parts.len() == 1 {
-                parts.pop().expect("one")
+            let new = if parts.len() == 1
+                && let Some(one) = parts.pop()
+            {
+                one
             } else {
                 let mut g = Item::new(ItemId(d.alloc()), it.layer, Shape::Group, PathData::default());
                 for p in &mut parts {

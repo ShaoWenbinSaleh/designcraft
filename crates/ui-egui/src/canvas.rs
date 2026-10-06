@@ -245,7 +245,7 @@ pub fn show(app: &mut DesignApp, ui: &mut egui::Ui) {
     }
     handle_input(app, ui, &resp, rect);
     let Some(st) = app.session.active() else { return };
-    let v = *app.view().expect("view");
+    let Some(&v) = app.view() else { return };
     let xf = Xf::new(rect, &v);
     let doc = st.doc.clone();
     let layout = CanvasLayout::new(&doc, st.editing_parents);
@@ -400,7 +400,7 @@ fn render_texture(app: &mut DesignApp, ctx: &egui::Context, rect: Rect, xf: &Xf,
     let doc_changed = app.canvas.shown.is_none_or(|s| s.doc != doc_key);
     let zoom_same = app.canvas.shown.is_some_and(|s| (s.zoom - xf.zoom).abs() < 1e-9);
     let job = |app: &DesignApp| {
-        let st = app.session.active().expect("doc");
+        let st = app.session.active()?;
         let placed: Vec<designcraft_render::Placed> =
             layout.slots.iter().map(|s| designcraft_render::Placed { spread: s.spread, xf: s.xf }).collect();
         let w = (target.size.0 as f64 * ppp).round().max(1.0) as u32;
@@ -424,7 +424,7 @@ fn render_texture(app: &mut DesignApp, ctx: &egui::Context, rect: Rect, xf: &Xf,
             blend_space_view: !app.ui.proof_colors,
             ..Default::default()
         };
-        (st.doc.clone(), placed, w, h, view, opts)
+        Some((st.doc.clone(), placed, w, h, view, opts))
     };
     // Synchronous path: document edits (keep editing crisp), first frame, or no worker.
     #[cfg(not(target_arch = "wasm32"))]
@@ -442,7 +442,7 @@ fn render_texture(app: &mut DesignApp, ctx: &egui::Context, rect: Rect, xf: &Xf,
     }
     if !has_worker || app.canvas.shown.is_none() || (doc_changed && zoom_same) {
         let t0 = crate::now_ms();
-        let (doc, placed, w, h, view, opts) = job(app);
+        let Some((doc, placed, w, h, view, opts)) = job(app) else { return };
         let img = app.canvas.renderer.render(&doc, &app.session.cache, &placed, w, h, view, &opts);
         upload(app, ctx, img);
         app.canvas.shown = Some(target);
@@ -463,7 +463,7 @@ fn render_texture(app: &mut DesignApp, ctx: &egui::Context, rect: Rect, xf: &Xf,
         }) {
             return;
         }
-        let (doc, placed, w, h, view, opts) = job(app);
+        let Some((doc, placed, w, h, view, opts)) = job(app) else { return };
         app.canvas.pending_doc = Some(doc.clone());
         app.canvas.token += 1;
         let token = app.canvas.token;
@@ -1189,6 +1189,7 @@ fn draw_tool_overlays(app: &mut DesignApp, painter: &egui::Painter, xf: &Xf) {
         let r = xf.rect(designcraft_geom::Rect::new(c.x - w / 2.0, c.y - h / 2.0, c.x + w / 2.0, c.y + h / 2.0));
         painter.rect_stroke(r, 0.0, egui::Stroke::new(1.5, Color32::from_rgb(230, 40, 40)), egui::StrokeKind::Middle);
     }
+    let tok = Tokens::get(painter.ctx());
     let ov = app.session.overlays(app.view_info());
     for o in ov {
         match o {
@@ -1206,10 +1207,10 @@ fn draw_tool_overlays(app: &mut DesignApp, painter: &egui::Painter, xf: &Xf) {
             }
             Overlay::Measure { p, text } => {
                 let s = xf.to_screen(p) + vec2(14.0, 14.0);
-                let g = painter.layout_no_wrap(text, egui::FontId::proportional(11.0), Color32::WHITE);
+                let g = painter.layout_no_wrap(text, egui::FontId::proportional(11.0), tok.measure_text);
                 let r = Rect::from_min_size(s, g.size() + vec2(10.0, 6.0));
-                painter.rect_filled(r, 3.0, Color32::from_rgba_unmultiplied(70, 70, 70, 230));
-                painter.galley(r.min + vec2(5.0, 3.0), g, Color32::WHITE);
+                painter.rect_filled(r, 3.0, tok.measure_bg);
+                painter.galley(r.min + vec2(5.0, 3.0), g, tok.measure_text);
             }
             Overlay::Line { a, b, color, dashed: d } => {
                 let st = Stroke::new(1.0, c32(color));
@@ -1220,7 +1221,16 @@ fn draw_tool_overlays(app: &mut DesignApp, painter: &egui::Painter, xf: &Xf) {
                 }
             }
             Overlay::Guide { a, b } => {
-                painter.line_segment([xf.to_screen(a), xf.to_screen(b)], Stroke::new(1.0, Color32::from_rgb(0, 200, 83)));
+                painter.line_segment([xf.to_screen(a), xf.to_screen(b)], Stroke::new(1.0, tok.smart_guide));
+            }
+            Overlay::Gap { a, b, label } => {
+                let (a, b) = (xf.to_screen(a), xf.to_screen(b));
+                painter.line_segment([a, b], Stroke::new(1.0, tok.smart_guide));
+                let s = a + (b - a) * 0.5;
+                let g = painter.layout_no_wrap(label, egui::FontId::proportional(11.0), tok.measure_text);
+                let r = Rect::from_min_size(s, g.size() + vec2(10.0, 6.0));
+                painter.rect_filled(r, 3.0, tok.measure_bg);
+                painter.galley(r.min + vec2(5.0, 3.0), g, tok.measure_text);
             }
             Overlay::Path { .. } => {}
         }
@@ -1317,7 +1327,7 @@ fn handle_input(app: &mut DesignApp, ui: &mut egui::Ui, resp: &egui::Response, r
     let Some(v) = app.view().copied() else { return };
     let xf = Xf::new(rect, &v);
     let wants_text = app.session.wants_text();
-    let space = ui.input(|i| i.key_down(egui::Key::Space)) && !wants_text && !ui.ctx().egui_wants_keyboard_input();
+    let space = ui.input(|i| i.key_down(egui::Key::Space)) && !wants_text && !ui.ctx().text_edit_focused();
     // Scroll / zoom.
     if resp.hovered() {
         let (scroll, zoom_delta, m, hover) = ui.input(|i| (i.smooth_scroll_delta, i.zoom_delta(), i.modifiers, i.pointer.hover_pos()));
@@ -1415,7 +1425,7 @@ fn handle_input(app: &mut DesignApp, ui: &mut egui::Ui, resp: &egui::Response, r
         resp.request_focus();
     }
     // Keyboard for the active tool.
-    if ui.ctx().egui_wants_keyboard_input() && !resp.has_focus() {
+    if ui.ctx().text_edit_focused() && !resp.has_focus() {
         return;
     }
     let evs = ui.input(|i| i.events.clone());

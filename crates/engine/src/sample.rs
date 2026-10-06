@@ -72,7 +72,7 @@ fn image(d: &mut Document, name: &str, w: u32, h: u32, hue: f32) -> AssetId {
     id
 }
 
-fn graphic_frame(d: &mut Document, sr: SpreadRef, r: Rect, asset: AssetId, px: (u32, u32)) -> ItemId {
+fn graphic_frame(d: &mut Document, sr: SpreadRef, r: Rect, asset: AssetId, px: (u32, u32)) -> designcraft_doc::Result<ItemId> {
     let id = ItemId(d.alloc());
     let lid = d.default_layer();
     let mut it = Item::new(id, lid, Shape::Rectangle, shapes::rectangle(r));
@@ -87,16 +87,23 @@ fn graphic_frame(d: &mut Document, sr: SpreadRef, r: Rect, asset: AssetId, px: (
         crop: [0.0; 4],
     });
     it.object_style = designcraft_doc::BASIC_GRAPHICS_FRAME.into();
-    d.insert_item(sr, it, None).expect("spread");
-    id
+    d.insert_item(sr, it, None)?;
+    Ok(id)
 }
 
-fn text(d: &mut Document, sr: SpreadRef, r: Rect, t: &str, style: &str) -> (ItemId, designcraft_doc::StoryId) {
+fn text(d: &mut Document, sr: SpreadRef, r: Rect, t: &str, style: &str) -> designcraft_doc::Result<(ItemId, designcraft_doc::StoryId)> {
     let lid = d.default_layer();
-    d.add_text_frame(sr, r, lid, t, ParaFormat { style: style.into(), ..Default::default() }).expect("spread")
+    d.add_text_frame(sr, r, lid, t, ParaFormat { style: style.into(), ..Default::default() })
 }
 
 pub fn magazine() -> Document {
+    build().unwrap_or_else(|e| {
+        log::error!("sample document: {e}");
+        Document::new(&NewDocument::default())
+    })
+}
+
+fn build() -> designcraft_doc::Result<Document> {
     let mut d = Document::new(&NewDocument {
         title: "Quarterly — Spring Issue".into(),
         pages: 4,
@@ -251,9 +258,10 @@ pub fn magazine() -> Document {
     // Parent A: folio and running head.
     let pa = SpreadRef::Parent(0);
     {
-        let (_, s) = text(&mut d, pa, Rect::new(42.0, 750.0, 300.0, 762.0), &format!("{}  ·  QUARTERLY", story::PAGE_NUMBER), "Folio");
+        let (_, s) = text(&mut d, pa, Rect::new(42.0, 750.0, 300.0, 762.0), &format!("{}  ·  QUARTERLY", story::PAGE_NUMBER), "Folio")?;
         let _ = s;
-        let (_, _) = text(&mut d, pa, Rect::new(w + 312.0, 750.0, w + w - 42.0, 762.0), &format!("SPRING ISSUE  ·  {}", story::PAGE_NUMBER), "Folio");
+        let (_, _) =
+            text(&mut d, pa, Rect::new(w + 312.0, 750.0, w + w - 42.0, 762.0), &format!("SPRING ISSUE  ·  {}", story::PAGE_NUMBER), "Folio")?;
         if let Some(st) = d.story_mut(designcraft_doc::StoryId(d.next_id - 1)) {
             st.format_paras(0..0, |p| p.para.align = Some(Align::Right));
         }
@@ -262,20 +270,20 @@ pub fn magazine() -> Document {
             let id = ItemId(d.alloc());
             let mut l = Item::new(id, lid, Shape::GraphicLine, shapes::line((x, 742.0).into(), (x + w - 96.0, 742.0).into()));
             l.stroke = Stroke { weight: 0.5, swatch: "[Black]".into(), tint: 0.4, ..Stroke::default() };
-            d.insert_item(pa, l, None).expect("parent");
+            d.insert_item(pa, l, None)?;
         }
     }
     // Page 1: cover (spread 0, single right page, no parent).
     let _ = d.apply_parent(&[0], None);
     let cover_art = image(&mut d, "dusk-cover.png", 1400, 1812, 0.0);
-    graphic_frame(&mut d, SpreadRef::Doc(0), Rect::new(-9.0, -9.0, w + 9.0, h + 9.0), cover_art, (1400, 1812));
-    let (_, _) = text(&mut d, SpreadRef::Doc(0), Rect::new(42.0, 60.0, 570.0, 120.0), "THE SPRING ISSUE  ·  NO. 01", "Kicker");
+    graphic_frame(&mut d, SpreadRef::Doc(0), Rect::new(-9.0, -9.0, w + 9.0, h + 9.0), cover_art, (1400, 1812))?;
+    let (_, _) = text(&mut d, SpreadRef::Doc(0), Rect::new(42.0, 60.0, 570.0, 120.0), "THE SPRING ISSUE  ·  NO. 01", "Kicker")?;
     if let Some(st) = d.stories.values().last().map(|s| s.id)
         && let Some(st) = d.story_mut(st)
     {
         st.format_chars(0..st.len(), |f| f.over.fill = Some("[Paper]".into()));
     }
-    let (_, cs) = text(&mut d, SpreadRef::Doc(0), Rect::new(42.0, 420.0, 570.0, 698.0), "The Quiet\nArt of Layout", "Cover Title");
+    let (_, cs) = text(&mut d, SpreadRef::Doc(0), Rect::new(42.0, 420.0, 570.0, 698.0), "The Quiet\nArt of Layout", "Cover Title")?;
     let _ = cs;
     text(
         &mut d,
@@ -283,13 +291,13 @@ pub fn magazine() -> Document {
         Rect::new(42.0, 700.0, 420.0, 760.0),
         "Grids, type and color: how great pages are made — and the tools that make them.",
         "Cover Deck",
-    );
+    )?;
 
     // Spread 1 (pages 2–3).
     let s1 = SpreadRef::Doc(1);
     let lx = 42.0; // left page outside margin
-    text(&mut d, s1, Rect::new(lx, 54.0, w - 54.0, 70.0), "Feature  ·  Design", "Kicker");
-    let (_, hs) = text(&mut d, s1, Rect::new(lx, 80.0, w - 54.0, 190.0), "Notes on the Grid", "Headline");
+    text(&mut d, s1, Rect::new(lx, 54.0, w - 54.0, 70.0), "Feature  ·  Design", "Kicker")?;
+    let (_, hs) = text(&mut d, s1, Rect::new(lx, 80.0, w - 54.0, 190.0), "Notes on the Grid", "Headline")?;
     let _ = hs;
     text(
         &mut d,
@@ -297,9 +305,9 @@ pub fn magazine() -> Document {
         Rect::new(lx, 182.0, w - 120.0, 240.0),
         "A good layout is invisible. Here is what is going on underneath the page — from the baseline grid to the paragraph composer.",
         "Deck",
-    );
+    )?;
     let art2 = image(&mut d, "hills.png", 1200, 760, 0.6);
-    let pic = graphic_frame(&mut d, s1, Rect::new(lx, 252.0, w - 54.0, 252.0 + 300.0), art2, (1200, 760));
+    let pic = graphic_frame(&mut d, s1, Rect::new(lx, 252.0, w - 54.0, 252.0 + 300.0), art2, (1200, 760))?;
     let _ = pic;
     text(
         &mut d,
@@ -307,19 +315,19 @@ pub fn magazine() -> Document {
         Rect::new(lx, 558.0, w - 54.0, 572.0),
         "Evening light over layered hills — generated entirely in code for this sample.",
         "Caption",
-    );
+    )?;
     // Body: threaded through 2 columns on the left page and 3 columns on the right page.
-    let (f1, body) = text(&mut d, s1, Rect::new(lx, 584.0, w - 54.0, 738.0), BODY, "Body");
+    let (f1, body) = text(&mut d, s1, Rect::new(lx, 584.0, w - 54.0, 738.0), BODY, "Body")?;
     if let Some(it) = d.item_mut(f1).and_then(Item::text_frame_mut) {
         it.options.columns = 2;
         it.options.gutter = 14.0;
     }
-    let (f2, _) = text(&mut d, s1, Rect::new(w + 54.0, 54.0, 2.0 * w - 42.0, 708.0), "", "Body");
+    let (f2, _) = text(&mut d, s1, Rect::new(w + 54.0, 54.0, 2.0 * w - 42.0, 708.0), "", "Body")?;
     if let Some(it) = d.item_mut(f2).and_then(Item::text_frame_mut) {
         it.options.columns = 3;
         it.options.gutter = 14.0;
     }
-    d.thread(f1, f2).expect("thread");
+    d.thread(f1, f2)?;
     // First paragraph: Body First + accent lead-in.
     if let Some(st) = d.story_mut(body) {
         st.paras[0].style = "Body First".into();
@@ -344,7 +352,7 @@ pub fn magazine() -> Document {
         Rect::new(w + 54.0 + 178.0, 300.0, 2.0 * w - 42.0, 420.0),
         "“The best layouts disappear. What remains is the story.”",
         "Pull Quote",
-    );
+    )?;
     if let Some(it) = d.item_mut(pq) {
         it.fill = Fill::swatch("Paper Warm");
         it.wrap.mode = WrapMode::BoundingBox;
@@ -361,17 +369,17 @@ pub fn magazine() -> Document {
     let id = ItemId(d.alloc());
     let mut bar = Item::new(id, lid, Shape::Rectangle, shapes::rectangle(Rect::new(w + 54.0, 600.0 + 120.0, 2.0 * w - 42.0, 600.0 + 126.0)));
     bar.fill = Fill { swatch: "Dusk Gradient".into(), ..Fill::none() };
-    d.insert_item(s1, bar, None).expect("spread");
+    d.insert_item(s1, bar, None)?;
 
     // Page 4: color page.
     let s2 = SpreadRef::Doc(2);
     let id = ItemId(d.alloc());
     let mut bg = Item::new(id, lid, Shape::Rectangle, shapes::rectangle(Rect::new(-9.0, -9.0, w + 9.0, 396.0)));
     bg.fill = Fill::swatch("Ink Plum");
-    d.insert_item(s2, bg, None).expect("spread");
-    let (_, k) = text(&mut d, s2, Rect::new(42.0, 80.0, 400.0, 100.0), "Coming next", "Kicker");
+    d.insert_item(s2, bg, None)?;
+    let (_, k) = text(&mut d, s2, Rect::new(42.0, 80.0, 400.0, 100.0), "Coming next", "Kicker")?;
     let _ = k;
-    let (t4, _) = text(&mut d, s2, Rect::new(42.0, 110.0, 560.0, 330.0), "Color, Ink & Paper", "Cover Title");
+    let (t4, _) = text(&mut d, s2, Rect::new(42.0, 110.0, 560.0, 330.0), "Color, Ink & Paper", "Cover Title")?;
     if let Some(sid) = d.item(t4).and_then(|i| i.text_frame()).map(|t| t.story)
         && let Some(st) = d.story_mut(sid)
     {
@@ -386,10 +394,10 @@ pub fn magazine() -> Document {
         if *sw == "Paper Warm" {
             c.stroke = Stroke { weight: 0.5, ..Stroke::default() };
         }
-        d.insert_item(s2, c, None).expect("spread");
-        text(&mut d, s2, Rect::new(x, 566.0, x + 116.0, 580.0), sw, "Caption");
+        d.insert_item(s2, c, None)?;
+        text(&mut d, s2, Rect::new(x, 566.0, x + 116.0, 580.0), sw, "Caption")?;
     }
-    let (f4, _) = text(&mut d, s2, Rect::new(42.0, 610.0, 570.0, 730.0), &BODY[..BODY.find('\n').unwrap_or(BODY.len())], "Body First");
+    let (f4, _) = text(&mut d, s2, Rect::new(42.0, 610.0, 570.0, 730.0), &BODY[..BODY.find('\n').unwrap_or(BODY.len())], "Body First")?;
     if let Some(it) = d.item_mut(f4).and_then(Item::text_frame_mut) {
         it.options.columns = 2;
     }
@@ -411,7 +419,7 @@ pub fn magazine() -> Document {
         for (r, row) in rows.iter().enumerate() {
             let style = if r == 0 { "Table Head" } else { "Table Body" };
             for (c, txt) in row.iter().enumerate() {
-                let cell = t.cell_mut(r, c).expect("cell");
+                let Some(cell) = t.cell_mut(r, c) else { continue };
                 *cell = designcraft_doc::Cell::with_text(txt, ParaFormat { style: style.into(), ..Default::default() });
                 cell.insets = [4.0, 6.0, 4.0, 6.0];
                 cell.vj = VerticalJustification::Center;
@@ -439,5 +447,5 @@ pub fn magazine() -> Document {
         st.format_paras(anchor..anchor, |p| p.para.start_paragraph = Some(designcraft_doc::StartParagraph::NextColumn));
     }
     debug_assert!(d.check().is_ok(), "{:?}", d.check());
-    d
+    Ok(d)
 }

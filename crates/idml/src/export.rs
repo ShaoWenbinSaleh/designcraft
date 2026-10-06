@@ -143,7 +143,7 @@ impl<'a> Ex<'a> {
         let mut ex = Ex {
             d,
             opts,
-            next: d.next_id + 0x100,
+            next: d.next_id.saturating_add(0x100),
             swatch_ids: HashMap::new(),
             fonts: BTreeMap::new(),
             threads: HashMap::new(),
@@ -2008,7 +2008,7 @@ impl<'a> Ex<'a> {
                 if owners[r * t.ncols() + c] != (r, c) {
                     continue;
                 }
-                let cell = t.cell(r, c).expect("in range");
+                let Some(cell) = t.cell(r, c) else { continue };
                 let vj = match cell.vj {
                     designcraft_doc::VerticalJustification::Top => "TopAlign",
                     designcraft_doc::VerticalJustification::Center => "CenterAlign",

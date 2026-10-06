@@ -12,6 +12,7 @@
 //!   agents can build layouts and look at them without a window.
 //!
 //! Entry points: [`Server::serve`] (stdio loop) and [`Server::handle_line`] (one message).
+#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 #![forbid(unsafe_code)]
 
 mod backend;

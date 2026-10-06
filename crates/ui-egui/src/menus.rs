@@ -92,6 +92,15 @@ pub const UI_COMMANDS: &[(&str, &str, Option<&str>, &str)] = &[
     ("view.frameEdges", "Show/Hide Frame Edges", Some("Cmd+H"), "{}"),
     ("view.rulers", "Show/Hide Rulers", Some("Cmd+R"), "{}"),
     ("view.guides", "Show/Hide Guides", Some("Cmd+;"), "{}"),
+    ("view.snapToGuides", "Snap to Guides", Some("Cmd+Shift+;"), "{}"),
+    ("view.snapToDocumentGrid", "Snap to Document Grid", None, "{}"),
+    ("view.smartGuides", "Smart Guides", None, "{}"),
+    (
+        "view.snapPreferences",
+        "Smart Guide Options",
+        None,
+        "{alignEdges?, alignCenters?, smartDimensions?, smartSpacing?: bool, zone?: px} — what smart guides snap to and how close; returns the current values",
+    ),
     ("view.baselineGrid", "Show/Hide Baseline Grid", Some("Cmd+Alt+'"), "{}"),
     ("view.textThreads", "Show/Hide Text Threads", Some("Cmd+Alt+Y"), "{}"),
     ("view.hiddenCharacters", "Show/Hide Hidden Characters", Some("Cmd+Alt+I"), "{}"),
@@ -599,6 +608,9 @@ pub const MENUS: &[(&str, &[&str])] = &[
             "-",
             ">Grids & Guides",
             "ui:view.guides",
+            "ui:view.snapToGuides",
+            "ui:view.snapToDocumentGrid",
+            "ui:view.smartGuides",
             "ui:view.baselineGrid",
             "-",
             "ui:app.deleteAllGuides",
@@ -997,6 +1009,11 @@ pub fn run_ui(app: &mut DesignApp, id: &str, p: &Value) -> Option<Result<Value, 
                 f["pasteboard.h"] = m(&doc["pasteboard"][0]);
                 f["pasteboard.v"] = m(&doc["pasteboard"][1]);
             }
+            f["snap.alignEdges"] = json!(app.ui.align_edges);
+            f["snap.alignCenters"] = json!(app.ui.align_centers);
+            f["snap.dimensions"] = json!(app.ui.smart_dimensions);
+            f["snap.spacing"] = json!(app.ui.smart_spacing);
+            f["snap.zone"] = json!(app.ui.snap_zone);
             f["displayQuality"] = json!(match app.ui.display_quality {
                 designcraft_render::DisplayQuality::Fast => "fast",
                 designcraft_render::DisplayQuality::Typical => "typical",
@@ -1080,6 +1097,9 @@ pub fn run_ui(app: &mut DesignApp, id: &str, p: &Value) -> Option<Result<Value, 
         }
         "view.rulers" => flag(&mut app.ui.rulers),
         "view.guides" => flag(&mut app.ui.guides),
+        "view.snapToGuides" => flag(&mut app.ui.snap_to_guides),
+        "view.snapToDocumentGrid" => flag(&mut app.ui.snap_to_document_grid),
+        "view.smartGuides" => flag(&mut app.ui.smart_guides),
         "view.baselineGrid" => flag(&mut app.ui.baseline_grid),
         "view.textThreads" => flag(&mut app.ui.text_threads),
         "view.hiddenCharacters" => flag(&mut app.ui.hidden_characters),
@@ -1214,6 +1234,24 @@ pub fn run_ui(app: &mut DesignApp, id: &str, p: &Value) -> Option<Result<Value, 
         "window.resetShortcuts" => {
             app.ui.shortcuts.clear();
             Ok(Value::Null)
+        }
+        "view.snapPreferences" => {
+            let b = |k: &str| p.get(k).and_then(Value::as_bool);
+            let ui = &mut app.ui;
+            ui.align_edges = b("alignEdges").unwrap_or(ui.align_edges);
+            ui.align_centers = b("alignCenters").unwrap_or(ui.align_centers);
+            ui.smart_dimensions = b("smartDimensions").unwrap_or(ui.smart_dimensions);
+            ui.smart_spacing = b("smartSpacing").unwrap_or(ui.smart_spacing);
+            if let Some(z) = p.get("zone").and_then(Value::as_f64).filter(|z| z.is_finite()) {
+                ui.snap_zone = z.max(0.0);
+            }
+            Ok(json!({
+                "alignEdges": ui.align_edges,
+                "alignCenters": ui.align_centers,
+                "smartDimensions": ui.smart_dimensions,
+                "smartSpacing": ui.smart_spacing,
+                "zone": ui.snap_zone,
+            }))
         }
         "window.richBlack" => {
             app.ui.rich_black = p.get("on").and_then(Value::as_bool).unwrap_or(!app.ui.rich_black);
@@ -1363,7 +1401,7 @@ pub fn run_ui(app: &mut DesignApp, id: &str, p: &Value) -> Option<Result<Value, 
 fn download_document(app: &mut DesignApp) -> Result<Value, String> {
     let name = app.session.active().map(|d| format!("{}.designcraft", d.doc.title)).ok_or("no document")?;
     let ser = app.run("file.serialize", json!({}))?;
-    let bytes = ser.get("json").and_then(Value::as_str).unwrap_or_default().as_bytes().to_vec();
+    let bytes = designcraft_engine::cmd::base64_decode(ser["base64"].as_str().unwrap_or_default());
     if let Some(download) = app.services.download.as_mut() {
         download(&name, &bytes);
     }
@@ -1645,6 +1683,9 @@ pub fn checked(app: &DesignApp, id: &str, params: &Value) -> Option<bool> {
         "view.typicalDisplay" => app.ui.display_quality == designcraft_render::DisplayQuality::Typical,
         "view.highQualityDisplay" => app.ui.display_quality == designcraft_render::DisplayQuality::High,
         "view.guides" => app.ui.guides,
+        "view.snapToGuides" => app.ui.snap_to_guides,
+        "view.snapToDocumentGrid" => app.ui.snap_to_document_grid,
+        "view.smartGuides" => app.ui.smart_guides,
         "view.baselineGrid" => app.ui.baseline_grid,
         "view.textThreads" => app.ui.text_threads,
         "view.hiddenCharacters" => app.ui.hidden_characters,
@@ -1819,7 +1860,9 @@ fn parse_shortcut(sc: &str) -> Option<(egui::Modifiers, egui::Key)> {
 
 /// Global keyboard shortcuts: menu commands and single-key tool shortcuts.
 pub fn shortcuts(app: &mut DesignApp, ctx: &egui::Context) {
-    if ctx.egui_wants_keyboard_input() || app.ui.dialog.is_some() || app.ui.palette.is_some() {
+    // Only a focused text field takes the keys: the canvas (or a button) having focus after a click
+    // must not swallow tool shortcuts until Esc clears it.
+    if ctx.text_edit_focused() || app.ui.dialog.is_some() || app.ui.palette.is_some() {
         return;
     }
     let typing = app.session.wants_text();
@@ -1970,6 +2013,18 @@ mod tests {
                 Item::Sep => {}
             }
         }
+    }
+
+    #[test]
+    fn snap_preferences_are_a_command() {
+        let mut app = crate::DesignApp::new(designcraft_engine::Session::new(), crate::Services::default());
+        let r = run_ui(&mut app, "view.snapPreferences", &json!({"smartSpacing": false, "zone": 8})).unwrap().unwrap();
+        assert_eq!(r["smartSpacing"], false);
+        assert_eq!(r["alignEdges"], true, "unnamed switches keep their value");
+        assert_eq!(r["zone"], 8.0);
+        assert!(!app.ui.smart_spacing && (app.ui.snap_zone - 8.0).abs() < 1e-9);
+        let r = run_ui(&mut app, "view.snapPreferences", &json!({"zone": -3})).unwrap().unwrap();
+        assert_eq!(r["zone"], 0.0, "a negative zone turns snapping off");
     }
 
     #[test]
@@ -2155,6 +2210,57 @@ mod tests {
         );
         assert!(app.power_zoom.is_none());
         assert!((app.view().unwrap().zoom - z0).abs() < 1e-9, "back at the zoom it started from");
+    }
+
+    #[test]
+    fn tool_shortcuts_work_after_drawing_on_the_canvas() {
+        // Clicking the canvas gives it keyboard focus; single-key tool shortcuts must still switch
+        // tools without pressing Esc first (#1).
+        let mut app = crate::DesignApp::new(designcraft_engine::Session::new(), crate::Services::default());
+        app.session.execute("file.new", &json!({})).unwrap();
+        let ctx = egui::Context::default();
+        let frame = |app: &mut crate::DesignApp, events: Vec<egui::Event>| {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1400.0, 900.0))),
+                events,
+                ..Default::default()
+            };
+            let mut out = ctx.run_ui(input, |ui| {
+                app.logic(&ui.ctx().clone());
+                app.ui(ui);
+            });
+            out.textures_delta.clear();
+        };
+        let key = |k: egui::Key| {
+            vec![
+                egui::Event::Key { key: k, physical_key: None, pressed: true, repeat: false, modifiers: Default::default() },
+                egui::Event::Key { key: k, physical_key: None, pressed: false, repeat: false, modifiers: Default::default() },
+            ]
+        };
+        let button = |pos: egui::Pos2, pressed: bool| egui::Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: Default::default(),
+        };
+        frame(&mut app, vec![]);
+        frame(&mut app, vec![]);
+        frame(&mut app, key(egui::Key::F));
+        assert_eq!(app.session.tool_id(), "rectangleFrame");
+        // Draw a frame.
+        let a = app.canvas_rect.unwrap().center();
+        let b = a + egui::vec2(120.0, 80.0);
+        frame(&mut app, vec![egui::Event::PointerMoved(a), button(a, true)]);
+        for i in 1..=4 {
+            frame(&mut app, vec![egui::Event::PointerMoved(a + (b - a) * (i as f32 / 4.0))]);
+        }
+        frame(&mut app, vec![button(b, false)]);
+        frame(&mut app, vec![]);
+        assert!(app.session.active().is_some_and(|d| !d.selection.items.is_empty()), "drew a frame");
+        frame(&mut app, key(egui::Key::V));
+        assert_eq!(app.session.tool_id(), "selection", "V switches tools straight after drawing");
+        frame(&mut app, key(egui::Key::F));
+        assert_eq!(app.session.tool_id(), "rectangleFrame");
     }
 
     #[test]

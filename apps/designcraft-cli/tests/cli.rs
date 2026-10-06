@@ -66,3 +66,17 @@ fn run_cmd_references_and_describe() {
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert!(v.as_array().unwrap().iter().all(|c| c.to_string().contains("footnote")));
 }
+
+/// `designcraft-cli commands | head -1` panicked with "failed printing to
+/// stdout: Broken pipe (os error 32)" and exit status 101.
+#[test]
+fn closed_stdout_ends_quietly() {
+    use std::io::Read;
+    let mut child = cli().arg("commands").stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().unwrap();
+    let mut first = [0u8; 16];
+    child.stdout.as_mut().unwrap().read_exact(&mut first).unwrap();
+    drop(child.stdout.take());
+    let out = child.wait_with_output().unwrap();
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(out.status.success() && !err.contains("panicked"), "{:?}: {err}", out.status);
+}

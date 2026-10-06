@@ -78,6 +78,11 @@ pub struct Tokens {
     pub section_divider: Color32,
     /// Panel tab strips, doc-tab bar, dock headers.
     pub tab_strip: Color32,
+    /// Smart guides and spacing marks drawn over the page.
+    pub smart_guide: Color32,
+    /// Measurement labels on the canvas (smart dimensions, gaps).
+    pub measure_bg: Color32,
+    pub measure_text: Color32,
 }
 
 fn hex(s: u32) -> Color32 {
@@ -117,6 +122,9 @@ impl Tokens {
             ruler_text: hex(0xd8d8d8),
             section_divider: hex(0x282828),
             tab_strip: hex(0x282828),
+            smart_guide: hex(0x00c853),
+            measure_bg: Color32::from_rgba_unmultiplied(70, 70, 70, 230),
+            measure_text: Color32::WHITE,
         };
         match b {
             Brightness::Dark => dark,
@@ -246,6 +254,13 @@ impl Tokens {
 }
 
 pub fn install_fonts(ctx: &egui::Context) {
+    ctx.set_fonts(font_definitions(designcraft_fonts::CRAFT_FONTS));
+}
+
+/// The UI fonts: the app's own, then the craft-fonts Japanese faces from `craft` (BIZ UDPGothic
+/// first; empty without `CRAFT_FONTS_DIR`) as a fallback at the end of every family. egui has
+/// no system-font discovery, so without craft-fonts Japanese UI text has no glyphs.
+fn font_definitions(craft: &'static [designcraft_fonts::CraftFont]) -> FontDefinitions {
     let mut fonts = FontDefinitions::default();
     let add = |fonts: &mut FontDefinitions, name: &str, data: &'static [u8]| {
         fonts.font_data.insert(name.into(), Arc::new(FontData::from_static(data)));
@@ -256,23 +271,22 @@ pub fn install_fonts(ctx: &egui::Context) {
     fonts.families.entry(FontFamily::Proportional).or_default().insert(0, "ui".into());
     fonts.families.entry(FontFamily::Monospace).or_default().insert(0, "mono".into());
     fonts.families.insert(FontFamily::Name("semibold".into()), vec!["ui-semibold".into(), "ui".into()]);
-    // System fonts are used at runtime only; no OS font is bundled or copied.
-    #[cfg(not(target_arch = "wasm32"))]
-    for path in [
-        "/System/Library/Fonts/STHeiti Medium.ttc",
-        "C:/Windows/Fonts/msyh.ttc",
-        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-        "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
-    ] {
-        if let Ok(bytes) = std::fs::read(path) {
-            fonts.font_data.insert("system-cjk".into(), Arc::new(FontData::from_owned(bytes)));
-            for family in [FontFamily::Proportional, FontFamily::Monospace, FontFamily::Name("semibold".into())] {
-                fonts.families.entry(family).or_default().push("system-cjk".into());
-            }
-            break;
-        }
+    let mut japanese: Vec<&designcraft_fonts::CraftFont> = craft.iter().filter(|f| f.scripts.contains(&"Jpan")).collect();
+    // BIZ UDPGothic (the UI face) first, Regular before Bold; the semibold family prefers Bold.
+    japanese.sort_by_key(|f| (f.family != "BIZ UDPGothic", f.style != "Regular"));
+    let name = |f: &designcraft_fonts::CraftFont| format!("craft-{}-{}", f.family, f.style);
+    for f in &japanese {
+        add(&mut fonts, &name(f), f.bytes);
     }
-    ctx.set_fonts(fonts);
+    for (family, stack) in fonts.families.iter_mut() {
+        let bold = *family == FontFamily::Name("semibold".into());
+        let mut order = japanese.clone();
+        if bold {
+            order.sort_by_key(|f| (f.family != "BIZ UDPGothic", f.style != "Bold"));
+        }
+        stack.extend(order.iter().map(|f| name(f)));
+    }
+    fonts
 }
 
 pub fn semibold(size: f32) -> FontId {
@@ -337,5 +351,60 @@ impl Tokens {
     /// Tokens stored by [`apply`].
     pub fn get(ctx: &egui::Context) -> Tokens {
         ctx.data(|d| d.get_temp::<Tokens>(egui::Id::NULL)).unwrap_or_else(|| Tokens::for_brightness(Brightness::Dark))
+    }
+}
+
+#[cfg(test)]
+mod japanese_font_tests {
+    fn families() -> [egui::FontFamily; 3] {
+        [egui::FontFamily::Proportional, egui::FontFamily::Monospace, egui::FontFamily::Name("semibold".into())]
+    }
+
+    fn ctx_with(craft: &'static [designcraft_fonts::CraftFont]) -> egui::Context {
+        let ctx = egui::Context::default();
+        ctx.set_fonts(super::font_definitions(craft));
+        let mut output = ctx.run_ui(egui::RawInput::default(), |_| {});
+        output.textures_delta.clear();
+        ctx
+    }
+
+    #[test]
+    fn japanese_ui_glyphs_are_available_in_every_family() {
+        if designcraft_fonts::CRAFT_FONTS.is_empty() {
+            eprintln!("skipped: built without craft-fonts (set CRAFT_FONTS_DIR to a checkout)");
+            return;
+        }
+        let ctx = ctx_with(designcraft_fonts::CRAFT_FONTS);
+        ctx.fonts_mut(|fonts| {
+            for family in families() {
+                let font = egui::FontId::new(13.0, family);
+                // Real glyphs (no tofu) for every character.
+                for ch in "日本語の文字縦書き横書き組み方向ルビ圏点".chars() {
+                    assert!(fonts.has_glyph(&font, ch), "missing {ch} in {font:?}");
+                }
+            }
+        });
+        // The UI face is BIZ UDPGothic, ahead of the Mincho faces.
+        let defs = super::font_definitions(designcraft_fonts::CRAFT_FONTS);
+        let stack = &defs.families[&egui::FontFamily::Proportional];
+        assert_eq!(stack.iter().find(|n| n.starts_with("craft-")).map(String::as_str), Some("craft-BIZ UDPGothic-Regular"));
+    }
+
+    #[test]
+    fn ui_works_without_craft_fonts() {
+        let ctx = ctx_with(&[]);
+        ctx.fonts_mut(|fonts| {
+            // (egui's has_glyph reports false for characters of the face that also supplies the
+            // replacement glyph, as Source Sans Semibold does in the semibold stack.)
+            let body = egui::FontId::new(13.0, egui::FontFamily::Proportional);
+            assert!(fonts.has_glyphs(&body, "DesignCraft"));
+            for family in families() {
+                let font = egui::FontId::new(13.0, family);
+                let galley = fonts.layout_no_wrap("日本語 DesignCraft".into(), font, egui::Color32::WHITE);
+                assert!(galley.size().x > 0.0);
+            }
+        });
+        // And the real installer works with whatever this build has.
+        super::install_fonts(&egui::Context::default());
     }
 }

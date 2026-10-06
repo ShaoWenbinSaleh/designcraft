@@ -2,6 +2,8 @@
 
 use std::sync::Arc;
 
+use designcraft_geom::Unit;
+pub use designcraft_tools::SnapView;
 use designcraft_tools::{Action, CanvasLayout, Cursor, Mods, Overlay, PointerEvent, ToolContext, ToolKey};
 use serde::Serialize;
 use serde_json::Value;
@@ -27,10 +29,24 @@ pub enum UiRequest {
 }
 
 /// View information the UI passes with pointer events.
-#[derive(Clone, Copy, Debug, Default, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize)]
 pub struct ViewInfo {
     /// Screen pixels per point.
     pub zoom: f64,
+    pub snap: SnapView,
+    pub unit: Unit,
+}
+
+impl ViewInfo {
+    pub const fn at_zoom(zoom: f64) -> Self {
+        Self { zoom, snap: SnapView::FACTORY, unit: Unit::Points }
+    }
+}
+
+impl Default for ViewInfo {
+    fn default() -> Self {
+        Self::at_zoom(1.0)
+    }
 }
 
 impl Session {
@@ -68,7 +84,16 @@ impl Session {
         let layer = st.active_layer;
         let layout = CanvasLayout::new(&doc, st.editing_parents);
         let cache = self.cache.clone();
-        let cx = ToolContext { doc: &doc, selection: &sel, cache: &cache, layout: &layout, zoom: view.zoom.max(1e-6), layer, snap: true };
+        let cx = ToolContext {
+            doc: &doc,
+            selection: &sel,
+            cache: &cache,
+            layout: &layout,
+            zoom: view.zoom.max(1e-6),
+            layer,
+            snap: view.snap,
+            unit: view.unit,
+        };
         Some(f(self.tool.as_mut(), &cx))
     }
 
@@ -97,7 +122,7 @@ impl Session {
     }
 
     pub fn wants_text(&mut self) -> bool {
-        self.with_ctx(ViewInfo { zoom: 1.0 }, |t, cx| t.wants_text(cx)).unwrap_or(false)
+        self.with_ctx(ViewInfo::at_zoom(1.0), |t, cx| t.wants_text(cx)).unwrap_or(false)
     }
 
     pub fn run_actions(&mut self, actions: Vec<Action>) -> Result<()> {

@@ -298,7 +298,7 @@ impl Table {
         let mut t = Table::new(id, data.len().max(1), cols, 0, 0, width);
         for (r, row) in data.iter().enumerate() {
             for (c, s) in row.iter().enumerate() {
-                let cell = t.cell_mut(r, c).expect("in range");
+                let Some(cell) = t.cell_mut(r, c) else { continue };
                 cell.text = Story::with_text(StoryId(0), "", ParaFormat { table: None, ..para.clone() });
                 cell.text.chars[0].format = fmt.clone();
                 cell.text.insert(0, s);

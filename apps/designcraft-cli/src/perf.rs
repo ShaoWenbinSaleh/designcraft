@@ -156,7 +156,7 @@ impl Default for Spec {
 
 /// A `spec.pages`-page facing document: per page a gradient band, a 2×N grid of threaded text
 /// frames, and a strip of placed images (one with a drop shadow per spread).
-pub fn synthetic(spec: &Spec) -> Document {
+pub fn synthetic(spec: &Spec) -> Result<Document, String> {
     let mut d = Document::new(&NewDocument { pages: spec.pages, ..Default::default() });
     let lid = d.default_layer();
     d.swatches.push(Swatch {
@@ -213,7 +213,7 @@ pub fn synthetic(spec: &Spec) -> Document {
         let mut band = Item::new(id, lid, Shape::Rectangle, shapes::rectangle(Rect::new(x0 + 36.0, 20.0, x0 + 576.0, 40.0)));
         band.fill = Fill { swatch: "Perf Gradient".into(), ..Fill::none() };
         band.fill.gradient_angle = Some(rng.next() * 90.0);
-        d.insert_item(sr, band, None).expect("spread");
+        d.insert_item(sr, band, None).map_err(|e| e.to_string())?;
         // Text frames.
         for k in 0..spec.frames_per_page {
             let (c, r) = (k % 2, k / 2);
@@ -222,9 +222,9 @@ pub fn synthetic(spec: &Spec) -> Document {
             let rect = Rect::new(fx, fy, fx + 260.0, fy + row_h - 6.0);
             let first = n_frame.is_multiple_of(spec.frames_per_story.max(1));
             let text = if first { filler(&mut rng, per_story) } else { String::new() };
-            let (fid, _) = d.add_text_frame(sr, rect, lid, &text, ParaFormat::default()).expect("frame");
+            let (fid, _) = d.add_text_frame(sr, rect, lid, &text, ParaFormat::default()).map_err(|e| e.to_string())?;
             if let (false, Some(p)) = (first, prev) {
-                d.thread(p, fid).expect("thread");
+                d.thread(p, fid).map_err(|e| e.to_string())?;
             }
             prev = Some(fid);
             n_frame += 1;
@@ -250,11 +250,11 @@ pub fn synthetic(spec: &Spec) -> Document {
             if k == 0 && pi == 0 {
                 it.effects.drop_shadow.on = true;
             }
-            d.insert_item(sr, it, None).expect("spread");
+            d.insert_item(sr, it, None).map_err(|e| e.to_string())?;
         }
         placed_images += want;
     }
-    d
+    Ok(d)
 }
 
 fn median_ms(runs: usize, mut f: impl FnMut()) -> f64 {
@@ -331,7 +331,7 @@ fn row(rows: &mut Vec<Row>, name: impl Into<String>, ms: f64, budget: Option<f64
 }
 
 /// Measure `doc`. `runs` = repetitions per row (median).
-fn measure(doc: &Document, runs: usize) -> Vec<Row> {
+fn measure(doc: &Document, runs: usize) -> Result<Vec<Row>, String> {
     let mut rows = vec![];
     let cores = std::thread::available_parallelism().map_or(1, |c| c.get());
     let chars: usize = doc.stories.values().map(|s| s.text.len()).sum();
@@ -460,9 +460,10 @@ fn measure(doc: &Document, runs: usize) -> Vec<Row> {
 
     let opts = RenderOptions { printing_only: true, ..Default::default() };
     let mut png = 0usize;
-    let ms = median_ms(runs.min(5), || {
-        let img = r.render_page(doc, &cache, doc.first_page_of_spread(mid), 150.0 / 72.0, true, &opts).expect("page");
-        png = img.to_png().len();
+    let mut failed: Option<String> = None;
+    let ms = median_ms(runs.min(5), || match r.render_page(doc, &cache, doc.first_page_of_spread(mid), 150.0 / 72.0, true, &opts) {
+        Some(img) => png = img.to_png().len(),
+        None => failed = Some("the middle spread has no page to render".into()),
     });
     row(&mut rows, format!("export page PNG at 150 dpi ({} kB)", png / 1024), ms, None);
 
@@ -470,25 +471,40 @@ fn measure(doc: &Document, runs: usize) -> Vec<Row> {
     row(
         &mut rows,
         format!("save .designcraft ({} pages)", doc.page_count()),
-        median_ms(runs.min(3), || bytes = designcraft_format::save(doc).expect("save")),
+        median_ms(runs.min(3), || match designcraft_format::save(doc) {
+            Ok(b) => bytes = b,
+            Err(e) => failed = Some(format!("save: {e}")),
+        }),
         Some(300.0),
     );
-    row(&mut rows, "open .designcraft", median_ms(runs.min(3), || drop(designcraft_format::load(&bytes).expect("load"))), Some(300.0));
+    let open_ms = median_ms(runs.min(3), || {
+        if let Err(e) = designcraft_format::load(&bytes) {
+            failed = Some(format!("open: {e}"));
+        }
+    });
+    row(&mut rows, "open .designcraft", open_ms, Some(300.0));
     let n = doc.page_count().min(100);
     let pdf = designcraft_pdf::PdfOptions { pages: Some((0..n).collect()), ..Default::default() };
     row(
         &mut rows,
         format!("PDF export {n} pages"),
-        median_ms(1, || drop(designcraft_pdf::export_pdf(doc, &cache, &pdf).expect("pdf"))),
+        median_ms(1, || {
+            if let Err(e) = designcraft_pdf::export_pdf(doc, &cache, &pdf) {
+                failed = Some(format!("PDF export: {e}"));
+            }
+        }),
         Some(2000.0 * n as f64 / 100.0),
     );
-    rows
+    match failed {
+        Some(e) => Err(e),
+        None => Ok(rows),
+    }
 }
 
 fn print(title: &str, rows: &[Row], noisy: bool) -> Result<(), String> {
-    println!("{title}");
+    outln!("{title}");
     let mut over = 0;
-    println!("  {:<60} {:>11} {:>10}", "", "measured", "budget");
+    outln!("  {:<60} {:>11} {:>10}", "", "measured", "budget");
     for r in rows {
         let (b, flag) = match r.budget {
             Some(b) if r.ms > b => {
@@ -498,16 +514,16 @@ fn print(title: &str, rows: &[Row], noisy: bool) -> Result<(), String> {
             Some(b) => (format!("{b:>7.0} ms"), "ok"),
             None => ("      —   ".into(), ""),
         };
-        println!("  {:<60} {:>8.2} ms {b}  {flag}", r.name, r.ms);
+        outln!("  {:<60} {:>8.2} ms {b}  {flag}", r.name, r.ms);
     }
     match (over, noisy) {
         (0, _) => Ok(()),
         (_, true) => {
-            println!("{over} over budget, but the machine is busy: re-run when idle.");
+            outln!("{over} over budget, but the machine is busy: re-run when idle.");
             Ok(())
         }
         _ => {
-            println!("{over} budget(s) exceeded");
+            outln!("{over} budget(s) exceeded");
             Ok(())
         }
     }
@@ -517,13 +533,13 @@ fn header() -> (usize, bool) {
     let cores = std::thread::available_parallelism().map_or(1, |c| c.get());
     let load = load_average();
     let noisy = load.is_some_and(|l| l > cores as f64 * 0.75);
-    println!(
+    outln!(
         "{cores} cores, load average {}, render threads {}",
         load.map_or("?".into(), |l| format!("{l:.1}")),
         designcraft_render::default_threads()
     );
     if noisy {
-        println!("WARNING: the machine is busy (load average above ¾ of the cores); wall-clock timings below are not trustworthy.");
+        outln!("WARNING: the machine is busy (load average above ¾ of the cores); wall-clock timings below are not trustworthy.");
     }
     (cores, noisy)
 }
@@ -548,9 +564,9 @@ pub fn perf(args: &[String]) -> Result<(), String> {
     }
     let (_, noisy) = header();
     let t = Instant::now();
-    let doc = synthetic(&spec);
+    let doc = synthetic(&spec)?;
     let frames = spec.pages * spec.frames_per_page;
-    println!(
+    outln!(
         "DesignCraft performance budgets — synthetic: {} pages, {frames} text frames in {} threaded stories, {}k chars, {} images ({} assets), {} gradients (built in {:.0} ms)",
         spec.pages,
         doc.stories.len(),
@@ -560,7 +576,7 @@ pub fn perf(args: &[String]) -> Result<(), String> {
         spec.pages,
         t.elapsed().as_secs_f64() * 1000.0
     );
-    let rows = measure(&doc, runs);
+    let rows = measure(&doc, runs)?;
     print("", &rows, noisy)?;
     let over = rows.iter().filter(|r| r.budget.is_some_and(|b| r.ms > b)).count();
     if strict && over > 0 && !noisy { Err(format!("{over} budget(s) exceeded")) } else { Ok(()) }
@@ -585,7 +601,7 @@ pub fn bench(args: &[String]) -> Result<(), String> {
     s.execute("file.open", &serde_json::json!({"path": file})).map_err(|e| e.to_string())?;
     let open = t.elapsed().as_secs_f64() * 1000.0;
     let doc = s.doc().map_err(|e| e.to_string())?.doc.clone();
-    println!("{file}: {} pages, {} stories, {} assets (opened in {open:.0} ms)", doc.page_count(), doc.stories.len(), doc.assets.len());
-    let rows = measure(&doc, runs);
+    outln!("{file}: {} pages, {} stories, {} assets (opened in {open:.0} ms)", doc.page_count(), doc.stories.len(), doc.assets.len());
+    let rows = measure(&doc, runs)?;
     print("", &rows, noisy)
 }

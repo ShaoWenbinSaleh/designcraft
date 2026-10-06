@@ -5,6 +5,7 @@
 //! handle positions. Rendering and algorithms convert to [`kurbo::BezPath`].
 //!
 //! Coordinates are document points (1/72 in), y pointing down.
+#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 #![forbid(unsafe_code)]
 
 pub mod corners;

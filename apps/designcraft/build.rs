@@ -22,7 +22,8 @@ fn main() {
         .set("InternalName", "designcraft");
     if let Err(e) = res.compile() {
         if std::env::var_os("DESIGNCRAFT_REQUIRE_WINRES").is_some() {
-            panic!("embedding Windows resources failed: {e}");
+            eprintln!("embedding Windows resources failed: {e}");
+            std::process::exit(1);
         }
         println!("cargo:warning=designcraft.exe built without icon/version resources: {e}");
     }

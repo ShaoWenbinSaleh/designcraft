@@ -21,6 +21,10 @@ fn has_book(s: &Session) -> std::result::Result<(), String> {
     if s.book.is_some() { Ok(()) } else { Err("no book open".into()) }
 }
 
+fn no_book() -> EngineError {
+    bad("book", "no book open")
+}
+
 #[cfg(not(target_arch = "wasm32"))]
 fn save(b: &Book) -> Result<()> {
     let bytes = serde_json::to_vec_pretty(b).map_err(|e| EngineError::Other(e.to_string()))?;
@@ -104,7 +108,7 @@ pub fn specs() -> Vec<CommandSpec> {
         cmd!(noundo "book.add", "Add Document", [], None, "{path, at?: index}", has_book, |s, p| {
             let path = str_param(p, "path").ok_or_else(|| bad("book.add", "`path` required"))?.to_string();
             load(&path)?;
-            let b = s.book.as_mut().expect("enabled");
+            let b = s.book.as_mut().ok_or_else(no_book)?;
             let at = p.get("at").and_then(Value::as_u64).map_or(b.documents.len(), |i| (i as usize).min(b.documents.len()));
             b.documents.insert(at, path);
             save(b)?;
@@ -112,7 +116,7 @@ pub fn specs() -> Vec<CommandSpec> {
         }),
         cmd!(noundo "book.remove", "Remove Document", [], None, "{index}", has_book, |s, p| {
             let i = p.get("index").and_then(Value::as_u64).ok_or_else(|| bad("book.remove", "`index` required"))? as usize;
-            let b = s.book.as_mut().expect("enabled");
+            let b = s.book.as_mut().ok_or_else(no_book)?;
             if i >= b.documents.len() {
                 return Err(bad("book.remove", format!("no document {i}")));
             }
@@ -125,7 +129,7 @@ pub fn specs() -> Vec<CommandSpec> {
         }),
         cmd!(noundo "book.styleSource", "Style Source", [], None, "{index}", has_book, |s, p| {
             let i = p.get("index").and_then(Value::as_u64).unwrap_or(0) as usize;
-            let b = s.book.as_mut().expect("enabled");
+            let b = s.book.as_mut().ok_or_else(no_book)?;
             if i >= b.documents.len() {
                 return Err(bad("book.styleSource", format!("no document {i}")));
             }
@@ -134,7 +138,7 @@ pub fn specs() -> Vec<CommandSpec> {
             ok()
         }),
         cmd!(query "book.list", "Book", [], None, "{} → {path, styleSource, documents: [{path, pages, firstPage}]}", has_book, |s, _| {
-            let b = s.book.as_ref().expect("enabled");
+            let b = s.book.as_ref().ok_or_else(no_book)?;
             let mut first = 1;
             let mut docs = Vec::new();
             for p in &b.documents {
@@ -145,7 +149,7 @@ pub fn specs() -> Vec<CommandSpec> {
             Ok(json!({"path": b.path, "styleSource": b.style_source, "documents": docs}))
         }),
         cmd!(noundo "book.paginate", "Update Numbering", [], None, "{} — each document starts numbering where the previous one ended (files are saved)", has_book, |s, _| {
-            let b = s.book.clone().expect("enabled");
+            let b = s.book.clone().ok_or_else(no_book)?;
             let mut next = 1u32;
             for p in &b.documents {
                 let mut d = load(p)?;
@@ -156,7 +160,7 @@ pub fn specs() -> Vec<CommandSpec> {
             Ok(json!({"pages": next - 1}))
         }),
         cmd!(noundo "book.syncStyles", "Synchronize Book", [], None, "{} — paragraph and character styles and swatches of the style source go into every document (by name)", has_book, |s, _| {
-            let b = s.book.clone().expect("enabled");
+            let b = s.book.clone().ok_or_else(no_book)?;
             let src_path = b.documents.get(b.style_source).ok_or_else(|| bad("book.syncStyles", "the book is empty"))?;
             let src = load(src_path)?;
             let mut n = 0;
@@ -189,7 +193,7 @@ pub fn specs() -> Vec<CommandSpec> {
             Ok(json!({"synced": n}))
         }),
         cmd!(noundo "book.exportPdf", "Export Book to PDF…", [], None, "{path?} — every document in order as one PDF → {path, bytes, pages} (no path: {base64, …})", has_book, |s, p| {
-            let b = s.book.clone().expect("enabled");
+            let b = s.book.clone().ok_or_else(no_book)?;
             let mut parts = Vec::new();
             for path in &b.documents {
                 let d = load(path)?;

@@ -355,7 +355,7 @@ impl Renderer {
         let screen = Rect::new(0.0, 0.0, ctx.width() as f64, ctx.height() as f64).inflate(spread, spread);
         let r = f.view.transform_rect_bbox(reach).inflate(spread, spread).intersect(screen);
         let (x0, y0) = (r.x0.floor(), r.y0.floor());
-        let (w, h) = ((r.x1.ceil() - x0).min(u16::MAX as f64), (r.y1.ceil() - y0).min(u16::MAX as f64));
+        let (w, h) = ((r.x1.ceil() - x0).min(crate::MAX_SIDE as f64), (r.y1.ceil() - y0).min(crate::MAX_SIDE as f64));
         if w < 1.0 || h < 1.0 {
             return;
         }

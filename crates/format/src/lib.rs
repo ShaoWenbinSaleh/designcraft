@@ -6,6 +6,7 @@
 //! - `meta.json`: format version and generator
 //!
 //! Older single-file JSON documents (assets as base64 in `assetData`) still open.
+#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 #![forbid(unsafe_code)]
 
 use std::io::{Cursor, Read, Write};

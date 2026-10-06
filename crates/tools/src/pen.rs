@@ -17,6 +17,8 @@ pub struct PenTool {
     anchors: Vec<(Point, Point, Point)>,
     dragging: bool,
     hover: Point,
+    /// Smart guides in canvas coordinates, as `snap_point` returned them.
+    guides: Vec<Overlay>,
 }
 
 fn anchor_json(a: &(Point, Point, Point)) -> Value {
@@ -29,8 +31,20 @@ impl PenTool {
         self.spread = None;
         self.anchors.clear();
         self.dragging = false;
+        self.guides.clear();
         vec![]
     }
+
+    /// Shift constrains first. The stored point is the snapped spread point. Guides are already canvas.
+    fn snap_click(&mut self, cx: &ToolContext, spread: SpreadRef, mut p: Point, shift: bool) -> Point {
+        if shift && let Some(last) = self.anchors.last() {
+            p = last.0 + designcraft_geom::constrain_angle(p - last.0, 45.0);
+        }
+        let (p, guides) = crate::snap::snap_point(cx, spread, p);
+        self.guides = guides;
+        p
+    }
+
     fn commit_anchor(&mut self) -> Vec<Action> {
         let Some(sr) = self.spread else { return vec![] };
         let Some(last) = self.anchors.last() else { return vec![] };
@@ -51,18 +65,27 @@ impl Tool for PenTool {
     }
 
     fn pointer(&mut self, cx: &ToolContext, ev: &PointerEvent) -> Vec<Action> {
-        let Some((sr, sp)) = cx.layout.spread_at(ev.pos) else { return vec![] };
+        let Some((sr, sp)) = cx.layout.spread_at(ev.pos) else {
+            self.guides.clear();
+            return vec![];
+        };
         self.hover = ev.pos;
         // The pen continues on the spread where the path started.
         let sp = match self.spread {
             Some(s) if s != sr => cx.layout.to_spread(s, ev.pos),
             _ => sp,
         };
+        let snap_spread = self.spread.unwrap_or(sr);
         // Pick up the item id created by path.create (the newest selected path).
         if self.path.is_none() && self.anchors.len() >= 2 {
             self.path = cx.selection.items.last().map(|i| i.0);
         }
         match ev.kind {
+            PointerKind::Move => {
+                let p = self.snap_click(cx, snap_spread, sp, ev.mods.shift);
+                self.hover = cx.layout.to_canvas(snap_spread, p);
+                vec![]
+            }
             PointerKind::Down => {
                 // Close on the first anchor.
                 if self.anchors.len() >= 2
@@ -76,12 +99,7 @@ impl Tool for PenTool {
                     self.finish();
                     return out;
                 }
-                let mut p = sp;
-                if ev.mods.shift
-                    && let Some(last) = self.anchors.last()
-                {
-                    p = last.0 + designcraft_geom::constrain_angle(p - last.0, 45.0);
-                }
+                let p = self.snap_click(cx, snap_spread, sp, ev.mods.shift);
                 if self.anchors.is_empty() {
                     self.spread = Some(sr);
                 }
@@ -120,9 +138,12 @@ impl Tool for PenTool {
     }
 
     fn overlays(&self, cx: &ToolContext) -> Vec<Overlay> {
-        let Some(sr) = self.spread else { return vec![] };
-        let xf = cx.layout.xf(sr);
         let mut out = Vec::new();
+        let Some(sr) = self.spread else {
+            out.extend(self.guides.iter().cloned());
+            return out;
+        };
+        let xf = cx.layout.xf(sr);
         if let Some(last) = self.anchors.last()
             && !self.dragging
         {
@@ -139,6 +160,8 @@ impl Tool for PenTool {
             out.push(Overlay::Line { a: xf * a.1, b: xf * a.2, color: [79, 153, 255], dashed: false });
             let _ = BezPath::new();
         }
+        // Guides are already canvas. Do not run them through the spread transform again.
+        out.extend(self.guides.iter().cloned());
         out
     }
 

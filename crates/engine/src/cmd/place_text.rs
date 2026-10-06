@@ -28,12 +28,14 @@ fn map_styles(d: &Document, imp: &mut designcraft_textimport::Imported, map: &st
     if conflict == Conflict::AutoRename {
         let st = &d.styles;
         for s in imp.para_styles.iter().filter(|s| !map.contains_key(&s.name) && st.para(&s.name).is_some()) {
-            let n = (1..).map(|i| format!("{}_wrd_{i}", s.name)).find(|n| st.para(n).is_none()).expect("free name");
-            rename.insert(s.name.clone(), n);
+            if let Some(n) = (1..=st.paragraph.len() + 1).map(|i| format!("{}_wrd_{i}", s.name)).find(|n| st.para(n).is_none()) {
+                rename.insert(s.name.clone(), n);
+            }
         }
         for s in imp.char_styles.iter().filter(|s| !map.contains_key(&s.name) && st.char_style(&s.name).is_some()) {
-            let n = (1..).map(|i| format!("{}_wrd_{i}", s.name)).find(|n| st.char_style(n).is_none()).expect("free name");
-            rename.insert(s.name.clone(), n);
+            if let Some(n) = (1..=st.character.len() + 1).map(|i| format!("{}_wrd_{i}", s.name)).find(|n| st.char_style(n).is_none()) {
+                rename.insert(s.name.clone(), n);
+            }
         }
     }
     if rename.is_empty() {

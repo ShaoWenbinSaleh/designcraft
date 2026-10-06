@@ -6,6 +6,7 @@
 //!
 //! Callers pass a list of spreads with their placement on a shared canvas and a canvas → pixel
 //! view transform, so the UI can render exactly its viewport with every visible spread.
+#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 #![forbid(unsafe_code)]
 
 use std::collections::HashMap;
@@ -35,6 +36,14 @@ pub use pdf_layers::{pdf_hide_layers, pdf_layers};
 pub mod images;
 mod text;
 
+/// Largest side of a raster the renderer draws. vello_cpu keeps sizes in `u16` and rounds them
+/// up to its tiles (4 px) and depth buckets (128 px), so a side near `u16::MAX` overflows inside
+/// it: stay a few buckets below.
+pub const MAX_SIDE: u32 = u16::MAX as u32 + 1 - 512;
+
+/// Largest page raster [`Renderer::render_page`] makes (2 GiB of RGBA).
+pub const MAX_PAGE_PIXELS: u64 = 1 << 29;
+
 /// A rendered image (premultiplied RGBA8, row-major).
 #[derive(Clone)]
 pub struct Rendered {
@@ -56,10 +65,20 @@ impl Rendered {
         }
         out
     }
+    /// PNG bytes (empty, with the error logged, if the image can't be encoded).
     pub fn to_png(&self) -> Vec<u8> {
         let mut buf = Vec::new();
-        let img = image::RgbaImage::from_raw(self.width, self.height, self.to_straight()).expect("size");
-        img.write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Png).expect("png encode");
+        let mut px = self.to_straight();
+        // `pixels` is public: a mismatched buffer is padded or cut to the stated size.
+        px.resize(self.width as usize * self.height as usize * 4, 0);
+        let Some(img) = image::RgbaImage::from_raw(self.width, self.height, px) else {
+            log::error!("PNG encode: {}×{} image is too large", self.width, self.height);
+            return Vec::new();
+        };
+        if let Err(e) = img.write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Png) {
+            log::error!("PNG encode: {e}");
+            return Vec::new();
+        }
         buf
     }
     pub fn to_jpeg(&self, quality: u8) -> Vec<u8> {
@@ -271,8 +290,8 @@ impl Renderer {
         opts: &RenderOptions,
     ) -> Rendered {
         let start = now();
-        let w = width.clamp(1, u16::MAX as u32) as u16;
-        let h = height.clamp(1, u16::MAX as u32) as u16;
+        let w = width.clamp(1, MAX_SIDE) as u16;
+        let h = height.clamp(1, MAX_SIDE) as u16;
         let mut ctx = match self.ctx.take() {
             Some(mut c) if c.width() == w && c.height() == h && c.render_settings().num_threads == self.threads => {
                 c.reset();
@@ -308,7 +327,9 @@ impl Renderer {
         ctx.flush();
         // Render straight into the returned buffer (no extra copy of the frame).
         let mut pixels = vec![0u8; w as usize * h as usize * 4];
-        ctx.render(vello_cpu::PixmapMut::new(w, h, &mut pixels).expect("buffer size"), &mut self.resources);
+        if let Some(pm) = vello_cpu::PixmapMut::new(w, h, &mut pixels) {
+            ctx.render(pm, &mut self.resources);
+        }
         if opts.blend_space_view && doc.settings.blend_space == designcraft_doc::BlendSpace::Cmyk && opts.plate.is_none() {
             let mut img = Rendered { width: w as u32, height: h as u32, pixels };
             for pl in spreads {
@@ -338,6 +359,10 @@ impl Renderer {
         }
         let w = (r.width() * scale).round().max(1.0) as u32;
         let h = (r.height() * scale).round().max(1.0) as u32;
+        if w > MAX_SIDE || h > MAX_SIDE || w as u64 * h as u64 > MAX_PAGE_PIXELS {
+            log::warn!("page {abs} at {scale} px/pt would be {w}×{h} pixels: too large to render");
+            return None;
+        }
         let view = Affine::scale(scale) * Affine::translate(-r.origin().to_vec2());
         let mut o = opts.clone();
         o.background = Some([255, 255, 255, 255]);
@@ -1142,6 +1167,32 @@ mod tests {
     use super::*;
     use designcraft_doc::build::NewDocument;
     use designcraft_doc::{Fill, ParaFormat};
+
+    /// `Rendered` has public fields: a buffer that doesn't match the stated size used to panic
+    /// in `to_png`.
+    /// A canvas 65535 pixels wide (any render wider than that was clamped to it) panicked inside
+    /// vello_cpu when it snapped the width up to its tiles; a huge page export now declines.
+    #[test]
+    fn very_wide_renders_do_not_panic() {
+        let doc = Document::new(&NewDocument::default());
+        let cache = Cache::new();
+        let mut r = Renderer::new();
+        let img = r.render(&doc, &cache, &[], 70_000, 4, Affine::IDENTITY, &RenderOptions::default());
+        assert_eq!(img.width, MAX_SIDE);
+        let page = [Placed { spread: SpreadRef::Doc(0), xf: Affine::IDENTITY }];
+        let opts = RenderOptions { background: Some([255, 255, 255, 255]), ..Default::default() };
+        let img = r.render(&doc, &cache, &page, 70_000, 64, Affine::scale(120.0), &opts);
+        assert_eq!(img.width, MAX_SIDE);
+        assert!(r.render_page(&doc, &cache, 0, 500.0, true, &RenderOptions::default()).is_none());
+    }
+
+    #[test]
+    fn to_png_survives_a_mismatched_buffer() {
+        let short = Rendered { width: 4, height: 4, pixels: vec![255; 10] };
+        let png = short.to_png();
+        assert_eq!(image::load_from_memory(&png).map(|i| (i.width(), i.height())).ok(), Some((4, 4)));
+        assert!(Rendered { width: 0, height: 0, pixels: vec![] }.to_png().len() < 1024);
+    }
 
     #[test]
     fn proof_view_simulates_the_target() {

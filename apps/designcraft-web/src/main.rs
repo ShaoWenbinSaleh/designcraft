@@ -13,6 +13,7 @@
 //!
 //! URL query flags: `?webgl` forces the WebGL2 backend instead of WebGPU; `?sample` opens the
 //! sample magazine on start.
+#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 #[cfg(target_arch = "wasm32")]
 mod web;

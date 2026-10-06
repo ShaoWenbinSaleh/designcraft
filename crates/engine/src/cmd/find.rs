@@ -188,7 +188,7 @@ fn change(s: &mut Session, p: &Value) -> Result<Value> {
             let text = story.text[r.clone()].to_string();
             let mut edits: Vec<(std::ops::Range<usize>, String)> = Vec::new();
             for caps in re.captures_iter(&text) {
-                let m = caps.get(0).expect("match");
+                let Some(m) = caps.get(0) else { continue };
                 let mut out = String::new();
                 if grep {
                     caps.expand(&rep, &mut out);
@@ -200,7 +200,7 @@ fn change(s: &mut Session, p: &Value) -> Result<Value> {
                     break;
                 }
             }
-            let st = d.story_mut(sid).expect("story");
+            let Some(st) = d.story_mut(sid) else { continue };
             for (range, new) in edits.iter().rev() {
                 st.replace(range.clone(), new);
                 if !over.is_empty() && !new.is_empty() {

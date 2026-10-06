@@ -59,6 +59,12 @@ const TABLE: &[(&str, [&str; 4])] = &[
         ],
     ),
     // Type.
+    ("Story Direction", ["Textrichtung", "Sens du texte", "Dirección del texto", "組み方向"]),
+    ("Horizontal", ["Horizontal", "Horizontal", "Horizontal", "横書き"]),
+    ("Vertical", ["Vertikal", "Vertical", "Vertical", "縦書き"]),
+    ("Tate-Chu-Yoko", ["Tate-Chu-Yoko", "Tate-Chu-Yoko", "Tate-Chu-Yoko", "縦中横"]),
+    ("Ruby…", ["Ruby …", "Ruby…", "Ruby…", "ルビ…"]),
+    ("Kenten", ["Kenten", "Kenten", "Kenten", "圏点"]),
     ("Font", ["Schriftart", "Police", "Fuente", "フォント"]),
     ("Size", ["Schriftgrad", "Corps", "Tamaño", "サイズ"]),
     ("Character", ["Zeichen", "Caractère", "Carácter", "文字"]),
@@ -95,6 +101,23 @@ const TABLE: &[(&str, [&str; 4])] = &[
     ("Screen Mode", ["Bildschirmmodus", "Mode d'affichage", "Modo de pantalla", "スクリーンモード"]),
     ("Grids & Guides", ["Raster und Hilfslinien", "Grilles et repères", "Cuadrículas y guías", "グリッドとガイド"]),
     ("Show Rulers", ["Lineale einblenden", "Afficher les règles", "Mostrar reglas", "定規を表示"]),
+    ("Snap to Guides", ["An Hilfslinien ausrichten", "Coller aux repères", "Ajustar a las guías", "ガイドにスナップ"]),
+    (
+        "Snap to Document Grid",
+        ["Am Dokumentraster ausrichten", "Coller à la grille du document", "Ajustar a la cuadrícula del documento", "ドキュメントグリッドにスナップ"],
+    ),
+    ("Smart Guides", ["Smarte Hilfslinien", "Repères intelligents", "Guías inteligentes", "スマートガイド"]),
+    (
+        "Align to Object Edges",
+        ["An Objektkanten ausrichten", "Aligner sur les bords des objets", "Alinear a los bordes del objeto", "オブジェクトの端に揃える"],
+    ),
+    (
+        "Align to Object Centers",
+        ["An Objektmitten ausrichten", "Aligner sur les centres des objets", "Alinear a los centros del objeto", "オブジェクトの中心に揃える"],
+    ),
+    ("Smart Dimensions", ["Smarte Maße", "Mesures intelligentes", "Dimensiones inteligentes", "スマートサイズ"]),
+    ("Smart Spacing", ["Smarte Abstände", "Espacements intelligents", "Espaciado inteligente", "スマート間隔"]),
+    ("Snap to Zone", ["Fangzone", "Zone de magnétisme", "Zona de ajuste", "スナップゾーン"]),
     // Window and panels.
     ("Properties", ["Eigenschaften", "Propriétés", "Propiedades", "プロパティ"]),
     ("Layers", ["Ebenen", "Calques", "Capas", "レイヤー"]),
@@ -159,6 +182,20 @@ mod tests {
         for (i, (en, t)) in TABLE.iter().enumerate() {
             assert!(TABLE[..i].iter().all(|(e, _)| e != en), "duplicate {en}");
             assert!(t.iter().all(|x| !x.is_empty()), "{en}");
+        }
+    }
+
+    #[test]
+    fn japanese_vertical_type_commands_are_translated() {
+        for (en, ja) in [
+            ("Story Direction", "組み方向"),
+            ("Horizontal", "横書き"),
+            ("Vertical", "縦書き"),
+            ("Tate-Chu-Yoko", "縦中横"),
+            ("Ruby…", "ルビ…"),
+            ("Kenten", "圏点"),
+        ] {
+            assert_eq!(tr("ja", en), ja);
         }
     }
 }

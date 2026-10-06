@@ -26,8 +26,9 @@ struct R<'a> {
 
 impl R<'_> {
     fn take(&mut self, n: usize) -> Result<&[u8], AseError> {
-        let s = self.b.get(self.i..self.i + n).ok_or(AseError::Truncated)?;
-        self.i += n;
+        let end = self.i.checked_add(n).ok_or(AseError::Truncated)?;
+        let s = self.b.get(self.i..end).ok_or(AseError::Truncated)?;
+        self.i = end;
         Ok(s)
     }
     fn u16(&mut self) -> Result<u16, AseError> {

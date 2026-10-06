@@ -254,7 +254,10 @@ pub fn specs() -> Vec<CommandSpec> {
                     let name = match want {
                         Some(n) if taken(&n) => return Err(bad("swatch.newColorGroup", format!("a group named `{n}` exists"))),
                         Some(n) => n,
-                        None => (1..).map(|i| format!("Color Group {i}")).find(|n| !taken(n)).expect("free name"),
+                        None => (1..=d.color_groups.len() + 1)
+                            .map(|i| format!("Color Group {i}"))
+                            .find(|n| !taken(n))
+                            .ok_or_else(|| bad("swatch.newColorGroup", "no free group name"))?,
                     };
                     for g in &mut d.color_groups {
                         g.swatches.retain(|w| !names.contains(w));
@@ -876,7 +879,7 @@ fn add_to_swatches(s: &mut Session, p: &Value) -> Result<Value> {
         if d.swatches.iter().any(|w| w.name == new) {
             return Err(bad("swatch.addToSwatches", format!("a swatch named `{new}` exists")));
         }
-        let w = d.swatches.iter_mut().find(|w| w.name == name).expect("found above");
+        let w = d.swatches.iter_mut().find(|w| w.name == name).ok_or_else(|| bad("swatch.addToSwatches", format!("no swatch `{name}`")))?;
         w.name = new.clone();
         w.named = true;
         for g in &mut d.color_groups {

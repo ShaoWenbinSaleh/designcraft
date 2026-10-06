@@ -34,7 +34,12 @@ pub fn specs() -> Vec<CommandSpec> {
             s.edit(|d, _| {
                 let st = d.story_mut(sid).ok_or_else(|| bad("endnote.delete", "no such story"))?;
                 let k = st.endnotes.iter().position(|n| n.id == id).ok_or_else(|| bad("endnote.delete", format!("no endnote {id}")))?;
-                let at = st.text.match_indices(designcraft_doc::ENDNOTE_REF).nth(k).map(|(i, _)| i).expect("one reference per endnote");
+                let at = st
+                    .text
+                    .match_indices(designcraft_doc::ENDNOTE_REF)
+                    .nth(k)
+                    .map(|(i, _)| i)
+                    .ok_or_else(|| bad("endnote.delete", format!("endnote {id} has no reference in the text")))?;
                 st.delete(at..at + designcraft_doc::ENDNOTE_REF.len_utf8());
                 ok()
             })
