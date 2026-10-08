@@ -1916,3 +1916,46 @@ fn composite_metrics_and_character_mappings_apply_inside_footnotes() {
     assert!((style.size - 9.6).abs() < 1e-8);
     assert!(!note.text.styles.iter().any(|s| s.missing_font));
 }
+
+#[test]
+fn generated_note_labels_resolve_composite_components_and_keep_one_anchor() {
+    use designcraft_doc::cjk::{CompositeFont, CompositeFontEntry};
+    let (mut d, sid, _) = doc_with("Body", Rect::new(0.0, 0.0, 300.0, 300.0), ParaAttrs::default());
+    d.styles_mut().composite_fonts.push(CompositeFont {
+        name: "Generated Mixed".into(),
+        entries: vec![
+            CompositeFontEntry { family: "Source Serif 4".into(), ..Default::default() },
+            CompositeFontEntry { characters: "[]".into(), family: "Inter".into(), relative_size: 0.8, ..Default::default() },
+        ],
+    });
+    d.footnote_options.affix_in = designcraft_doc::notes::AffixIn::Both;
+    d.footnote_options.prefix = "[".into();
+    d.footnote_options.suffix = "]".into();
+    let story = d.story_mut(sid).unwrap();
+    story.insert_note(4, "Note", ParaFormat::default());
+    story.format_chars(4..7, |f| f.over.font_family = Some("Generated Mixed".into()));
+    let cs = compose_story(&d, sid, &ComposeOptions::default());
+    let glyphs: Vec<_> = cs.frames[0].lines.iter().flat_map(|l| &l.glyphs).filter(|g| g.byte == 4).collect();
+    assert_eq!(glyphs.iter().filter(|g| g.len > 0).count(), 1);
+    assert_eq!(glyphs.iter().map(|g| g.rendered_char).collect::<String>(), "[1]");
+    assert!(glyphs.iter().all(|g| g.gid != 0));
+    assert!(glyphs.iter().filter(|g| matches!(g.rendered_char, '[' | ']')).all(|g| g.face.family == "Inter"));
+    assert_eq!(glyphs.iter().find(|g| g.rendered_char == '1').unwrap().face.family, "Source Serif 4");
+    assert_eq!(cs.frames[0].notes.len(), 1);
+}
+
+#[test]
+fn generated_note_labels_use_coverage_fallback() {
+    let font = designcraft_fonts::testing::font_with("Generated Label Coverage", &['\u{E888}']).unwrap();
+    designcraft_fonts::FontDb::global().add_font(font);
+    let (mut d, sid, _) = doc_with("Body", Rect::new(0.0, 0.0, 300.0, 300.0), ParaAttrs::default());
+    d.footnote_options.affix_in = designcraft_doc::notes::AffixIn::Both;
+    d.footnote_options.prefix = "\u{E888}".into();
+    d.footnote_options.suffix = "".into();
+    d.settings.glyph_fallback = true;
+    d.story_mut(sid).unwrap().insert_note(4, "Note", ParaFormat::default());
+    let cs = compose_story(&d, sid, &ComposeOptions::default());
+    let glyph = cs.frames[0].lines.iter().flat_map(|l| &l.glyphs).find(|g| g.rendered_char == '\u{E888}').unwrap();
+    assert_ne!(glyph.gid, 0);
+    assert_eq!(glyph.face.family, "Generated Label Coverage");
+}
