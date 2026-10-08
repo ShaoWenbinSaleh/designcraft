@@ -706,8 +706,8 @@ impl Document {
             }
         }
         for t in &self.styles.mojikumi_tables {
-            if t.overrides.iter().any(|r| !mojikumi::valid_range(r)) {
-                return Err(DocError::Invalid(format!("invalid mojikumi spacing: {}", t.name)));
+            if t.overrides.iter().any(|r| ![r.minimum, r.desired, r.maximum].iter().all(|v| v.is_finite())) {
+                return Err(DocError::Invalid(format!("non-finite mojikumi spacing: {}", t.name)));
             }
         }
         let mut ids = std::collections::HashSet::new();

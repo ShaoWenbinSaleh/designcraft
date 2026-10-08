@@ -477,8 +477,6 @@ fn shape_run(
         let tsume = p.tsume.clamp(0.0, 1.0);
         let before = p.leading_aki.unwrap_or(0.0).clamp(0.0, 100.0) * em;
         let after = p.trailing_aki.unwrap_or(0.0).clamp(0.0, 100.0) * em;
-        g.moji.tsume_before = left * tsume;
-        g.moji.tsume_after = right * tsume;
         g.dx += before - left * tsume;
         g.adv += before + after - (left + right) * tsume;
     }

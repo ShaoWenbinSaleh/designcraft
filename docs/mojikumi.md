@@ -1,33 +1,18 @@
-# Mojikumi implementation and public references
+# Mojikumi repair scope
 
-This is a clean-room implementation of public spacing behavior. Mojikumi is an
-Adobe feature, not a single conformance standard. W3C JLReq and CLReq describe
-Japanese and Chinese layout requirements; they do not specify Adobe's private
-composer or its complete preset pair matrices.
+The retained changes address reproducible implementation defects: equal-priority
+spacing allocation, discrete compression endpoints, leading-only compression,
+spacing after complete shaped clusters, and tracking that made narrow punctuation
+look full-width. Preflight also checks nested note and table-cell paragraph rules.
 
-References:
+IDML import rejects malformed/non-finite numbers and integer coercion. Finite,
+representable rules outside the composer's supported range remain preserved;
+the rule resolver reports unsupported settings instead of rejecting the document.
 
-- [Adobe preset enumeration](https://developer.adobe.com/indesign/uxp/dom/api/m/mojikumi-table-defaults/)
-- [Adobe Mojikumi guide, sections 3–5](https://wwwimages.adobe.com/www.adobe.com/jp/joc/design/guides/pdf/mojikumi.pdf)
-- [Adobe spacing priorities](https://helpx.adobe.com/indesign/desktop/language-and-proofing/chinese-japanese-and-korean/set-spacing-priorities-in-mojikumi-character-classes.html)
-- [W3C JLReq](https://www.w3.org/TR/jlreq/), especially character classes and line adjustment
-- [W3C CLReq](https://www.w3.org/TR/clreq/), especially regional punctuation placement
+The broad preset expansion, regional side-bearing changes, Tsume combination
+policy, and CID preference/diagnostic extension were withdrawn after review.
+The original supported preset set and Unicode classification remain in place.
+No claim of full Adobe Mojikumi conformance or exact output parity is made.
 
-## Presets and interchange
-
-The resolver recognizes the 14 Japanese presets and two Chinese presets from the
-public enumeration, including their IDML resource aliases. Paragraph indentation,
-opening-bracket indentation, ordinary line starts, full/half/discrete line ends,
-and period-only line-end policies are represented separately. Custom IDML rows
-replace the corresponding directional pair. Adjacent opening and closing marks
-must not regain two full blank half-bodies.
-
-Regression tests cover preset boundary differences, custom override precedence,
-IDML reference round trips, and unsupported names. The implementation must not be
-represented as a byte-for-byte reproduction of Adobe's full preset matrices.
-
-## Audit work
-
-Further audit areas are regional punctuation metrics, shaped cluster boundaries,
-equal-priority allocation, discrete line fitting, input validation, and diagnostics
-for compatibility modes whose glyph classification cannot yet be reproduced.
+Reference for priority semantics:
+[Adobe spacing priorities](https://helpx.adobe.com/indesign/desktop/language-and-proofing/chinese-japanese-and-korean/set-spacing-priorities-in-mojikumi-character-classes.html).

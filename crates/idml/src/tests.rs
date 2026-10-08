@@ -947,6 +947,7 @@ fn malformed_mojikumi_rows_are_not_silently_coerced() {
         ("Desired", "oops"),
         ("Minimum", "0.4"),
         ("Maximum", "0.1"),
+        ("Maximum", "101"),
         ("CompressionPriority", "10"),
         ("AkiDoesNotFloat", "maybe"),
     ] {
@@ -964,7 +965,17 @@ fn malformed_mojikumi_rows_are_not_silently_coerced() {
             ("Spreads/Spread_sp1.xml", SPREAD),
             ("Stories/Story_s1.xml", STORY),
         ]);
-        let err = import_idml(&bytes).unwrap_err().to_string();
-        assert!(err.contains("Mojikumi"), "{key}={value}: {err}");
+        if matches!((key, value), ("Minimum", "0.4") | ("Maximum", "0.1" | "101") | ("CompressionPriority", "10")) {
+            // Finite, representable rules survive import even if composition
+            // cannot apply them. The resolver supplies a diagnostic instead.
+            let document = import_idml(&bytes).unwrap();
+            document.check().unwrap();
+            assert!(designcraft_doc::mojikumi::Rules::resolve(&document.styles, "MojikumiTable/Bad").is_err());
+            let restored = import_idml(&export_idml(&document)).unwrap();
+            assert_eq!(restored.styles.mojikumi_tables, document.styles.mojikumi_tables);
+        } else {
+            let err = import_idml(&bytes).unwrap_err().to_string();
+            assert!(err.contains("Mojikumi"), "{key}={value}: {err}");
+        }
     }
 }

@@ -10,8 +10,6 @@ pub struct Metrics {
     pub active: bool,
     /// Shaped body width before tracking and manual character spacing.
     pub body: f64,
-    pub tsume_before: f64,
-    pub tsume_after: f64,
     pub blank_before: f64,
     pub blank_after: f64,
     /// Desired internal gap attached to this glyph's advance.
@@ -71,8 +69,8 @@ pub fn apply(glyphs: &mut [Glyph], styles: &Styles, name: &str) {
         // Tracking must not make a proportional or half-width glyph appear to
         // contain a removable half-em body. Shaping features already affect body.
         if body >= unit * 0.8 {
-            let before = if cluster[0].moji.explicit_before { 0.0 } else { (table.leading(class) * unit - cluster[0].moji.tsume_before).max(0.0) };
-            let after = if cluster[0].moji.explicit_after { 0.0 } else { (table.trailing(class) * unit - cluster[0].moji.tsume_after).max(0.0) };
+            let before = if cluster[0].moji.explicit_before { 0.0 } else { rules::leading(class) * unit };
+            let after = if cluster[0].moji.explicit_after { 0.0 } else { rules::trailing(class) * unit };
             let trim = before + after;
             if let Some(owner) = cluster.iter().position(|g| g.adv >= trim) {
                 cluster[0].moji.blank_before = before / unit.max(1e-9);

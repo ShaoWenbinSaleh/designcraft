@@ -1,10 +1,9 @@
 # DesignCraft roadmap
 
-- CJK-MOJI8: preserve shaped narrow punctuation and manual Tsume instead of restoring nonexistent full-width blank space.
-- CJK-MOJI7: reject malformed Mojikumi interchange values and check nested note/cell paragraph rules in preflight.
-- CJK-MOJI6: apply spacing at shaped-cluster boundaries and distinguish centered Traditional Chinese punctuation from Simplified Chinese side bearings.
+- CJK-MOJI8: preserve shaped narrow punctuation when tracking changes its advance.
+- CJK-MOJI7: prevent numeric coercion in Mojikumi import, preserve finite unsupported rules, and check nested note/cell rules in preflight.
+- CJK-MOJI6: apply spacing at shaped-cluster boundaries without moving attached marks.
 - CJK-MOJI5: share equal-priority boundary spacing and honor discrete compression endpoints, including leading-only ragged-line fitting.
-- CJK-MOJI4: resolve all public Mojikumi preset names and their distinct paragraph/line-edge policies; correct consecutive punctuation defaults and small-kana classes.
 
 - CJK-MOJI3: use the composition rule resolver in preflight, report unknown Mojikumi presets and retain regression coverage for supported and unsupported settings.
 
