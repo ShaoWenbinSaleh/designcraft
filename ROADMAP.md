@@ -1,5 +1,7 @@
 # DesignCraft roadmap
 
+- CJK-MOJI2: share Mojikumi pair and line-edge metrics between breaking and placement; honor spacing bounds, compression priorities, explicit aki and kinsoku policies.
+
 - CJK-MOJI1: resolve Chinese and half-em Mojikumi presets and directional custom overrides; preserve IDML table references independently of display names.
 
 - FONT7: replacement recommendations check the characters actually used; placeholder LastResort fonts and glyph-zero mappings cannot masquerade as glyph coverage or suppress missing-glyph diagnostics.

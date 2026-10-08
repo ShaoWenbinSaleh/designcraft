@@ -2014,3 +2014,217 @@ fn generated_note_labels_use_coverage_fallback() {
     assert_ne!(glyph.gid, 0);
     assert_eq!(glyph.face.family, "Generated Label Coverage");
 }
+
+#[test]
+fn mojikumi_custom_pairs_change_positions_and_breaks_without_font_scaling() {
+    use designcraft_doc::cjk::{MojikumiAki, MojikumiTable};
+    let (mut d, sid, _) = doc_with(
+        "A1A1A1",
+        Rect::new(0.0, 0.0, 55.0, 300.0),
+        ParaAttrs { hyphenate: Some(false), composer: Some(Composer::SingleLine), ..Default::default() },
+    );
+    let before = compose_story(&d, sid, &ComposeOptions::default());
+    Arc::make_mut(&mut d.styles).mojikumi_tables.push(MojikumiTable {
+        name: "Synthetic".into(),
+        based_on: "SimpChineseDefault".into(),
+        overrides: vec![
+            MojikumiAki { target_class: 18, side_class: 25, after: true, minimum: 1.0, desired: 1.0, maximum: 1.0, ..Default::default() },
+            MojikumiAki { target_class: 25, side_class: 18, after: true, minimum: 1.0, desired: 1.0, maximum: 1.0, ..Default::default() },
+        ],
+    });
+    d.story_mut(sid).unwrap().paras[0].para.mojikumi = Some("MojikumiTable/Synthetic".into());
+    let after = compose_story(&d, sid, &ComposeOptions::default());
+    assert!(all_lines(&after).len() > all_lines(&before).len());
+    let a = &all_lines(&after)[0].glyphs;
+    let b = &all_lines(&before)[0].glyphs;
+    assert!((a[1].x - b[1].x - 12.0).abs() < 0.001);
+    assert_eq!(a[0].sx, b[0].sx);
+    assert!(all_lines(&after).iter().all(|l| l.end_x <= l.x1 + 0.01));
+}
+
+#[test]
+fn mojikumi_paragraph_indent_adds_to_paragraph_settings_and_rounds_no_glyphs() {
+    use designcraft_doc::cjk::{MojikumiAki, MojikumiTable};
+    let (mut d, sid, _) = doc_with(
+        "ABC",
+        Rect::new(0.0, 0.0, 200.0, 100.0),
+        ParaAttrs { first_line_indent: Some(7.0), mojikumi: Some("MojikumiTable/Indent".into()), ..Default::default() },
+    );
+    Arc::make_mut(&mut d.styles).mojikumi_tables.push(MojikumiTable {
+        name: "Indent".into(),
+        based_on: "SimpChineseDefault".into(),
+        overrides: vec![MojikumiAki {
+            target_class: 18,
+            side_class: 23,
+            after: false,
+            minimum: 2.0,
+            desired: 2.0,
+            maximum: 2.0,
+            ..Default::default()
+        }],
+    });
+    let cs = compose_story(&d, sid, &ComposeOptions::default());
+    let line = all_lines(&cs)[0];
+    assert!((line.glyphs[0].x - 31.0).abs() < 0.001, "{}", line.glyphs[0].x);
+    assert_eq!(line.glyphs.len(), 3);
+}
+
+#[test]
+fn mojikumi_justifies_cjk_without_spaces_and_respects_fixed_spacing() {
+    use designcraft_doc::cjk::{MojikumiAki, MojikumiTable};
+    let (mut d, sid, _) = doc_with(
+        "A1A1",
+        Rect::new(0.0, 0.0, 100.0, 100.0),
+        ParaAttrs { align: Some(Align::FullyJustified), mojikumi: Some("MojikumiTable/Elastic".into()), ..Default::default() },
+    );
+    Arc::make_mut(&mut d.styles).mojikumi_tables.push(MojikumiTable {
+        name: "Elastic".into(),
+        based_on: "SimpChineseDefault".into(),
+        overrides: vec![MojikumiAki {
+            target_class: 18,
+            side_class: 25,
+            after: true,
+            minimum: 0.0,
+            desired: 0.0,
+            maximum: 5.0,
+            priority: 1,
+            ..Default::default()
+        }],
+    });
+    let cs = compose_story(&d, sid, &ComposeOptions::default());
+    assert!((all_lines(&cs)[0].end_x - 100.0).abs() < 0.001, "{}", all_lines(&cs)[0].end_x);
+}
+
+#[test]
+fn mojikumi_fixed_pairs_are_not_stretched_by_single_word_justification() {
+    use designcraft_doc::cjk::{MojikumiAki, MojikumiTable};
+    let (mut d, sid, _) = doc_with(
+        "A1A1",
+        Rect::new(0.0, 0.0, 150.0, 100.0),
+        ParaAttrs { align: Some(Align::FullyJustified), mojikumi: Some("MojikumiTable/Fixed".into()), ..Default::default() },
+    );
+    Arc::make_mut(&mut d.styles).mojikumi_tables.push(MojikumiTable {
+        name: "Fixed".into(),
+        based_on: "SimpChineseDefault".into(),
+        overrides: [(18, 25), (25, 18)]
+            .into_iter()
+            .map(|(target_class, side_class)| MojikumiAki {
+                target_class,
+                side_class,
+                after: true,
+                minimum: 0.25,
+                desired: 0.25,
+                maximum: 0.25,
+                ..Default::default()
+            })
+            .collect(),
+    });
+    let cs = compose_story(&d, sid, &ComposeOptions::default());
+    let line = all_lines(&cs)[0];
+    assert!(line.end_x < 100.0, "Fixed spacing was stretched: {}", line.end_x);
+    d.story_mut(sid).unwrap().paras[0].para.align = Some(Align::Left);
+    let ragged = compose_story(&d, sid, &ComposeOptions::default());
+    assert_eq!(line.end_x, all_lines(&ragged)[0].end_x);
+}
+
+#[test]
+fn mojikumi_kinsoku_push_in_and_push_out_select_different_legal_breaks() {
+    use designcraft_doc::cjk::{MojikumiAki, MojikumiTable};
+    let text = "甲乙丙丁戊己庚辛";
+    let (mut d, sid, _) = doc_with(
+        text,
+        Rect::new(0.0, 0.0, 45.0, 300.0),
+        ParaAttrs {
+            composer: Some(Composer::SingleLine),
+            mojikumi: Some("MojikumiTable/Compress".into()),
+            kinsoku_type: Some("KinsokuPushInFirst".into()),
+            ..Default::default()
+        },
+    );
+    Arc::make_mut(&mut d.styles).mojikumi_tables.push(MojikumiTable {
+        name: "Compress".into(),
+        based_on: "SimpChineseDefault".into(),
+        overrides: vec![MojikumiAki {
+            target_class: 12,
+            side_class: 12,
+            after: true,
+            minimum: 0.0,
+            desired: 1.0,
+            maximum: 1.0,
+            priority: 1,
+            ..Default::default()
+        }],
+    });
+    let inside = compose_story(&d, sid, &ComposeOptions::default());
+    d.story_mut(sid).unwrap().paras[0].para.kinsoku_type = Some("KinsokuPushOutFirst".into());
+    let outside = compose_story(&d, sid, &ComposeOptions::default());
+    assert!(all_lines(&inside)[0].range.end > all_lines(&outside)[0].range.end);
+    for cs in [&inside, &outside] {
+        assert!(all_lines(cs).iter().all(|l| l.end_x <= l.x1 + 0.01));
+    }
+}
+
+#[test]
+fn mojikumi_priority_and_elastic_line_start_are_used_in_placement() {
+    use designcraft_doc::cjk::{MojikumiAki, MojikumiTable};
+    let (mut d, sid, _) = doc_with("A1B2", Rect::new(0.0, 0.0, 45.0, 100.0), ParaAttrs::default());
+    let natural = compose_story(&d, sid, &ComposeOptions::default());
+    let middle_gap = all_lines(&natural)[0].glyphs[2].x - all_lines(&natural)[0].glyphs[1].x;
+    Arc::make_mut(&mut d.styles).mojikumi_tables.push(MojikumiTable {
+        name: "Priority".into(),
+        based_on: "SimpChineseDefault".into(),
+        overrides: vec![
+            MojikumiAki {
+                target_class: 18,
+                side_class: 25,
+                after: true,
+                minimum: 0.0,
+                desired: 0.0,
+                maximum: 10.0,
+                priority: 1,
+                ..Default::default()
+            },
+            MojikumiAki {
+                target_class: 25,
+                side_class: 18,
+                after: true,
+                minimum: 0.0,
+                desired: 0.0,
+                maximum: 10.0,
+                priority: 2,
+                ..Default::default()
+            },
+        ],
+    });
+    let para = &mut d.story_mut(sid).unwrap().paras[0].para;
+    para.mojikumi = Some("MojikumiTable/Priority".into());
+    para.align = Some(Align::FullyJustified);
+    let result = compose_story(&d, sid, &ComposeOptions::default());
+    let line = all_lines(&result)[0];
+    assert!((line.end_x - 45.0).abs() < 0.001);
+    assert!((line.glyphs[2].x - line.glyphs[1].x - middle_gap).abs() < 0.001, "Priority 2 was used before priority 1 was exhausted");
+
+    let (mut d, sid, _) = doc_with(
+        "A",
+        Rect::new(0.0, 0.0, 30.0, 100.0),
+        ParaAttrs { mojikumi: Some("MojikumiTable/Start".into()), align: Some(Align::FullyJustified), ..Default::default() },
+    );
+    Arc::make_mut(&mut d.styles).mojikumi_tables.push(MojikumiTable {
+        name: "Start".into(),
+        based_on: "SimpChineseDefault".into(),
+        overrides: vec![MojikumiAki {
+            target_class: 18,
+            side_class: 23,
+            after: false,
+            minimum: 0.0,
+            desired: 0.0,
+            maximum: 5.0,
+            priority: 1,
+            ..Default::default()
+        }],
+    });
+    let result = compose_story(&d, sid, &ComposeOptions::default());
+    let line = all_lines(&result)[0];
+    assert!((line.end_x - 30.0).abs() < 0.001);
+    assert!(line.glyphs[0].x > 10.0, "Leading gap must move the first outline too");
+}
