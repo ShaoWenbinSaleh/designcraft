@@ -110,6 +110,19 @@ fn overset_location(s: &Session, target: designcraft_doc::ItemId) -> Option<(des
     None
 }
 
+fn rendered_faces(cs: &ComposedStory, faces: &mut Vec<FaceRef>) {
+    let mut pending: Vec<_> = cs.frames.iter().collect();
+    while let Some(frame) = pending.pop() {
+        for g in frame.lines.iter().flat_map(|line| &line.glyphs).filter(|g| g.visible) {
+            if !faces.contains(&g.face) {
+                faces.push(g.face);
+            }
+        }
+        pending.extend(frame.notes.iter().flat_map(|n| &n.text.frames));
+        pending.extend(frame.tables.iter().flat_map(|t| t.cells.iter().flat_map(|c| &c.text.frames)));
+    }
+}
+
 pub fn check(s: &Session, min_ppi: f64) -> Vec<Issue> {
     let Some(st) = s.active() else { return vec![] };
     let d = &st.doc;
@@ -117,10 +130,15 @@ pub fn check(s: &Session, min_ppi: f64) -> Vec<Issue> {
     // Stories: overset and fonts.
     let mut missing_fonts: Vec<String> = Vec::new();
     let mut unsupported_typography = std::collections::BTreeSet::new();
+    let mut cid_faces = Vec::new();
+    let mut uses_mojikumi = false;
     let mut missing: Vec<(FaceRef, Vec<char>, designcraft_doc::ItemId)> = Vec::new();
     for story in d.stories.values() {
         let cs = s.cache.get(d, story.id, None);
         missing_glyphs(&cs, None, 0, &mut missing);
+        if d.settings.use_cid_mojikumi {
+            rendered_faces(&cs, &mut cid_faces);
+        }
         if cs.is_overset() {
             let last = story.frames.last().copied();
             let location = last.and_then(|f| overset_location(s, f));
@@ -144,6 +162,7 @@ pub fn check(s: &Session, min_ppi: f64) -> Vec<Issue> {
         let ranges = story.para_ranges();
         for (pi, pf) in story.paras.iter().enumerate() {
             let (para, base) = d.styles.resolve_para(pf);
+            uses_mojikumi |= !matches!(para.mojikumi.as_str(), "" | "Nothing" | "None");
             let Some(range) = ranges.get(pi) else { continue };
             let has_rtl = story.text.get(range.clone()).is_some_and(|text| text.chars().any(designcraft_fonts::is_rtl));
             if has_rtl {
@@ -206,6 +225,14 @@ pub fn check(s: &Session, min_ppi: f64) -> Vec<Issue> {
     }
     for f in missing_fonts {
         out.push(Issue { severity: "error", kind: "missingFont", message: format!("Missing font: {f}"), item: None, page: None });
+    }
+    if uses_mojikumi {
+        for face in cid_faces.iter().filter(|face| face.uses_japan1_cids()) {
+            unsupported_typography.insert(format!(
+                "CID-based Mojikumi requested for {} {}; Unicode classes are used because CID class mapping is not implemented",
+                face.family, face.style
+            ));
+        }
     }
     for message in unsupported_typography {
         out.push(Issue { severity: "warning", kind: "unsupportedTypography", message, item: None, page: None });
@@ -426,5 +453,22 @@ mod mojikumi_nested_tests {
         d.story_mut(sid).unwrap().insert_table(0, table);
         let issues = check(&s, 150.0);
         assert_eq!(issues.iter().filter(|i| i.kind == "unsupportedTypography" && i.message.contains("Unrecognized")).count(), 1);
+    }
+}
+
+#[cfg(test)]
+mod cid_preference_tests {
+    use super::*;
+    #[test]
+    fn cid_request_is_undoable_and_does_not_warn_for_unicode_only_fonts() {
+        let mut s = Session::new();
+        s.execute("file.new", &json!({})).unwrap();
+        let r = s.execute("frame.create", &json!({"rect":[0,0,300,200], "content":"text", "text":"ABC"})).unwrap();
+        s.execute("text.select", &json!({"story":r["story"],"anchor":0,"focus":3})).unwrap();
+        s.execute("type.para", &json!({"attrs":{"mojikumi":"SimpChineseDefault"}})).unwrap();
+        assert_eq!(s.execute("document.preferences", &json!({"useCidMojikumi":true})).unwrap()["useCidMojikumi"], true);
+        assert!(!check(&s, 150.0).iter().any(|i| i.message.contains("CID-based")));
+        s.execute("edit.undo", &json!({})).unwrap();
+        assert_eq!(s.execute("document.preferences", &json!({})).unwrap()["useCidMojikumi"], false);
     }
 }

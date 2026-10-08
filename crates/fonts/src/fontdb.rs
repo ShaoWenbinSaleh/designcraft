@@ -181,6 +181,13 @@ impl std::fmt::Debug for FontFace {
 }
 
 impl FontFace {
+    /// Adobe-Japan1 CFF fonts are the collection for CID-based Mojikumi.
+    /// Other CID collections still use Unicode classes under Adobe's policy.
+    pub fn uses_japan1_cids(&self) -> bool {
+        use skrifa::raw::TableProvider;
+        self.skrifa().and_then(|f| f.cff().ok()).is_some_and(cff_uses_japan1_cids)
+    }
+
     pub fn data(&self) -> &[u8] {
         match &self.bytes {
             FontBytes::Static(b) => b,
@@ -1567,3 +1574,31 @@ mod tests_docfonts;
 #[cfg(test)]
 #[path = "tests_vertical.rs"]
 mod tests_vertical;
+
+fn cff_uses_japan1_cids(cff: skrifa::raw::tables::cff::Cff<'_>) -> bool {
+    use skrifa::raw::ps::cff::dict;
+    let Some(top) = cff.top_dicts().get(0) else { return false };
+    dict::entries(top, None).any(|entry| match entry {
+        Ok(dict::Entry::Ros { registry, ordering, .. }) => cff.string(registry) == Some(b"Adobe") && cff.string(ordering) == Some(b"Japan1"),
+        _ => false,
+    })
+}
+
+#[cfg(test)]
+mod mojikumi_cid_tests {
+    use super::*;
+    use skrifa::raw::{FontData, FontRead, tables::cff::Cff};
+    #[test]
+    fn recognizes_the_collection_in_cff_metadata_without_reading_outlines() {
+        // Minimal synthetic CFF indices: one name, a ROS dict, two strings,
+        // and one return-only subroutine. SID 391/392 reference the two strings.
+        let mut data = vec![1, 0, 4, 4, 0, 1, 1, 1, 2, b'T', 0, 1, 1, 1, 8, 248, 27, 248, 28, 139, 12, 30, 0, 2, 1, 1, 6, 12];
+        data.extend_from_slice(b"AdobeJapan1");
+        data.extend_from_slice(&[0, 1, 1, 1, 2, 11]);
+        assert!(cff_uses_japan1_cids(Cff::read(FontData::new(&data)).unwrap()));
+        let end = data.len() - 6;
+        data[end - 6..end].copy_from_slice(b"CNS1-X");
+        assert!(!cff_uses_japan1_cids(Cff::read(FontData::new(&data)).unwrap()));
+        assert!(!FontDb::global().face(crate::DEFAULT_FAMILY, "Regular").uses_japan1_cids());
+    }
+}

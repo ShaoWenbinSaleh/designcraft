@@ -1,5 +1,6 @@
 # DesignCraft roadmap
 
+- CJK-MOJI9: retain the CID Mojikumi compatibility preference and diagnose actual Adobe-Japan1 font use; exact CID class mapping remains unsupported.
 - CJK-MOJI8: preserve shaped narrow punctuation and manual Tsume instead of restoring nonexistent full-width blank space.
 - CJK-MOJI7: reject malformed Mojikumi interchange values and check nested note/cell paragraph rules in preflight.
 - CJK-MOJI6: apply spacing at shaped-cluster boundaries and distinguish centered Traditional Chinese punctuation from Simplified Chinese side bearings.

@@ -273,6 +273,9 @@ impl<'r> Importer<'r> {
                     }
                 }
                 "TextPreference" => {
+                    if let Some(v) = e.boolean("UseCidMojikumi") {
+                        self.settings.use_cid_mojikumi = v;
+                    }
                     let a = &mut self.settings.advanced_type;
                     for (k, v) in [
                         ("SuperscriptSize", &mut a.superscript_size),
