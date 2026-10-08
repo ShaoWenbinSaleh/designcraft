@@ -13,7 +13,7 @@ use crate::{Result, Session};
 
 pub fn specs() -> Vec<CommandSpec> {
     vec![
-        cmd!(query "font.list", "Fonts in Document", [], None, "{} → [{family, style, characters, missing, styleMissing, source: bundled|installed|document|added (null when missing), matchStatus: exact|styleSubstitute|missing, resolvedFamily, resolvedStyle}] (missing first)", has_doc, |s, _| {
+        cmd!(query "font.list", "Fonts in Document", [], None, "{} → [{family, style, characters, missing, styleMissing, source: bundled|installed|document|added (null when missing), matchStatus: exact|styleSubstitute|missing, resolvedFamily, resolvedStyle, replacementFamily, replacementStyle}] (missing first)", has_doc, |s, _| {
             Ok(Value::Array(list(&s.doc()?.doc)))
         }),
         cmd!(
@@ -51,6 +51,8 @@ pub(super) struct UsedFont {
     pub match_status: &'static str,
     pub resolved_family: String,
     pub resolved_style: String,
+    pub replacement_family: String,
+    pub replacement_style: String,
 }
 
 fn list(d: &Document) -> Vec<Value> {
@@ -59,7 +61,7 @@ fn list(d: &Document) -> Vec<Value> {
 
 pub(super) fn used_fonts(d: &Document) -> Vec<UsedFont> {
     let db = designcraft_fonts::FontDb::global().scoped(d.font_scope);
-    let mut used: BTreeMap<(String, String), usize> = BTreeMap::new();
+    let mut used: BTreeMap<(String, String), (usize, std::collections::BTreeSet<char>)> = BTreeMap::new();
     for_each_story(d, &mut |st| {
         let ranges = st.para_ranges();
         for (pi, r) in ranges.iter().enumerate() {
@@ -74,21 +76,27 @@ pub(super) fn used_fonts(d: &Document) -> Vec<UsedFont> {
                     let text = st.text.get(rr.start.max(r.start)..rr.end.min(r.end).max(rr.start.max(r.start))).unwrap_or("");
                     for c in text.chars() {
                         if let Some(e) = f.entry(c) {
-                            *used.entry((e.family.clone(), e.style.clone())).or_default() += 1;
+                            let entry = used.entry((e.family.clone(), e.style.clone())).or_default();
+                            entry.0 += 1;
+                            entry.1.insert(c);
                         }
                     }
                 } else {
-                    *used.entry((p.font_family, p.font_style)).or_default() += n;
+                    let entry = used.entry((p.font_family, p.font_style)).or_default();
+                    entry.0 += n;
+                    entry.1.extend(st.text.get(rr.start.max(r.start)..rr.end.min(r.end).max(rr.start.max(r.start))).unwrap_or("").chars());
                 }
             }
         }
     });
     let mut out: Vec<UsedFont> = used
         .into_iter()
-        .map(|((family, style), n)| {
+        .map(|((family, style), (n, characters))| {
             let missing = !db.has_family(&family);
             let style_missing = !missing && !db.has_style(&family, &style);
             let resolved = db.face(&family, &style);
+            let characters: Vec<char> = characters.into_iter().filter(|c| !('\u{E000}'..='\u{E1FF}').contains(c)).collect();
+            let replacement = db.replacement_face(&family, &style, &characters);
             let source = (!missing).then(|| match db.face(&family, &style).source {
                 FontSource::Bundled => "bundled",
                 FontSource::Installed(_) => "installed",
@@ -111,6 +119,8 @@ pub(super) fn used_fonts(d: &Document) -> Vec<UsedFont> {
                 },
                 resolved_family: resolved.family.clone(),
                 resolved_style: resolved.style.clone(),
+                replacement_family: replacement.family.clone(),
+                replacement_style: replacement.style.clone(),
             }
         })
         .collect();
@@ -147,6 +157,9 @@ fn replace(s: &mut Session, p: &Value) -> Result<Value> {
         return Err(bad("font.replace", "Choose an available replacement font style"));
     }
     let resolved = db.face(&to_family, to_style.as_deref().or(style.as_deref()).unwrap_or("Regular"));
+    if resolved.is_placeholder() {
+        return Err(bad("font.replace", "A placeholder font cannot replace document text"));
+    }
     let to_family = resolved.family.clone();
     let to_style = (to_style.is_some() || style.is_some()).then(|| resolved.style.clone());
     let styles_too = p.get("redefineStyles").and_then(Value::as_bool).unwrap_or(true);

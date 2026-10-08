@@ -51,7 +51,7 @@ fn missing_glyphs(
     }
     for f in &cs.frames {
         let owner = owner.unwrap_or(f.frame);
-        for g in f.lines.iter().flat_map(|l| &l.glyphs).filter(|g| g.visible && g.gid == 0) {
+        for g in f.lines.iter().flat_map(|l| &l.glyphs).filter(|g| g.visible && (g.gid == 0 || g.face.is_placeholder())) {
             let c = g.rendered_char;
             if c.is_control() || c.is_whitespace() || ('\u{E000}'..='\u{E1FF}').contains(&c) {
                 continue;

@@ -2611,13 +2611,13 @@ fn find_font(app: &mut DesignApp, ui: &mut egui::Ui, d: &mut Dialog) {
         d.fields.insert("_fonts".into(), list);
     }
     let fonts = d.fields.get("_fonts").and_then(Value::as_array).cloned().unwrap_or_default();
-    if d.s("family").is_empty()
+    if !fonts.iter().any(|font| font["family"] == d.s("family") && font["style"] == d.s("style"))
         && let Some(font) = fonts.first()
     {
         d.fields.insert("family".into(), font["family"].clone());
         d.fields.insert("style".into(), font["style"].clone());
     }
-    if d.b("onOpen") {
+    if d.b("onOpen") && fonts.iter().any(|f| f["missing"] == true || f["styleMissing"] == true) {
         crate::rtl::label(
             ui,
             crate::i18n::tr(
@@ -2656,8 +2656,8 @@ fn find_font(app: &mut DesignApp, ui: &mut egui::Ui, d: &mut Dialog) {
     if let Some(font) = fonts.iter().find(|f| f["family"] == d.s("family") && f["style"] == d.s("style")) {
         if d.s("_fontKey") != key {
             d.fields.insert("_fontKey".into(), json!(key));
-            d.fields.insert("toFamily".into(), font["resolvedFamily"].clone());
-            d.fields.insert("toStyle".into(), font["resolvedStyle"].clone());
+            d.fields.insert("toFamily".into(), font["replacementFamily"].clone());
+            d.fields.insert("toStyle".into(), font["replacementStyle"].clone());
         }
         crate::rtl::label(
             ui,

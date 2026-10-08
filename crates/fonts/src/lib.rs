@@ -563,3 +563,29 @@ mod resolution_tests {
         assert_eq!(scope.face("An Unavailable Original Family", "Regular").family, FALLBACK_FAMILY);
     }
 }
+
+#[cfg(test)]
+mod coverage_recommendation_tests {
+    use super::*;
+
+    #[test]
+    fn placeholder_fonts_do_not_satisfy_glyph_coverage() {
+        let db = FontDb::with_font_dirs(Vec::new());
+        db.add_font(testing::font_with(".LastResort", &['\u{10fffd}']).unwrap());
+        let face = db.face(".LastResort", "Regular");
+        assert!(face.is_placeholder());
+        assert!(!face.covers('\u{10fffd}'));
+        assert!(db.fallback_for('\u{10fffd}', u32::MAX, None).is_none());
+    }
+
+    #[test]
+    fn arabic_replacement_also_covers_surrounding_punctuation() {
+        let db = FontDb::with_font_dirs(Vec::new());
+        db.add_font(testing::font_with("Geeza Pro", &['ع']).unwrap());
+        db.add_font(testing::font_with("Al Bayan", &['ع', '“']).unwrap());
+        let scope = db.scoped(0);
+        assert_eq!(scope.face("Traditional Arabic", "Regular").family, "Geeza Pro");
+        assert_eq!(scope.replacement_face("Traditional Arabic", "Regular", &['ع', '“']).family, "Al Bayan");
+        assert!(!scope.has_family("Traditional Arabic"));
+    }
+}
