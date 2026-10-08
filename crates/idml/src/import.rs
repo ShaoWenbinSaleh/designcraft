@@ -105,6 +105,7 @@ struct Importer<'r> {
     stroke_styles: Vec<designcraft_doc::StrokeStyleDef>,
     styles: Styles,
     composite_names: HashMap<String, String>,
+    mojikumi_names: HashMap<String, String>,
     kinsoku: HashMap<String, designcraft_doc::cjk::Kinsoku>,
     para_names: HashMap<String, String>,
     char_names: HashMap<String, String>,
@@ -190,6 +191,7 @@ impl<'r> Importer<'r> {
             stroke_styles: Vec::new(),
             styles,
             composite_names: HashMap::new(),
+            mojikumi_names: HashMap::new(),
             kinsoku: HashMap::new(),
             para_names: HashMap::new(),
             char_names: HashMap::new(),
@@ -311,6 +313,9 @@ impl<'r> Importer<'r> {
             }
         }
         for e in top.iter().filter(|e| e.local() == "MojikumiTable") {
+            if let (Some(id), Some(name)) = (e.get("Self"), e.get("Name")) {
+                self.mojikumi_names.insert(id.into(), format!("MojikumiTable/{}", unescape_id(name)));
+            }
             let overrides = e
                 .prop_el("OverrideMojikumiAkiList")
                 .map(|l| {
@@ -1185,7 +1190,7 @@ impl<'r> Importer<'r> {
             "KinsokuHangForce" => Some(designcraft_doc::cjk::KinsokuHang::Force),
             _ => None,
         });
-        a.mojikumi = e.prop("Mojikumi");
+        a.mojikumi = e.prop("Mojikumi").map(|name| self.mojikumi_names.get(&name).cloned().unwrap_or_else(|| unescape_id(&name)));
         a.kinsoku_type = e.prop("KinsokuType");
         a.bunri_kinshi = e.boolean("BunriKinshi");
         a.rensuuji = e.boolean("Rensuuji");

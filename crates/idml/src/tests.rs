@@ -792,12 +792,11 @@ fn cjk_composite_fonts_and_custom_kinsoku_are_document_resources() {
 }
 
 #[test]
-fn cjk_unsupported_mojikumi_is_preserved_instead_of_silently_dropped() {
-    let map = DESIGNMAP.replace("</Document>", r#"<MojikumiTable Self="MojikumiTable/Spacing" Name="Spacing" BasedOnMojikumiSet="SimpChineseDefault"><Properties><OverrideMojikumiAkiList>
+fn cjk_mojikumi_overrides_and_priority_round_trip() {
+    let map = DESIGNMAP.replace("</Document>", r#"<MojikumiTable Self="uMojikumi1" Name="Spacing" BasedOnMojikumiSet="SimpChineseDefault"><Properties><OverrideMojikumiAkiList>
     <OverrideMojikumiAkiType TargetMojikumiClass="1" SideMojikumiClass="23" SideIsAfterTarget="false" Minimum="-0.1" Desired="0.25" Maximum="0.5" CompressionPriority="3" AkiDoesNotFloat="true"/>
     </OverrideMojikumiAkiList></Properties></MojikumiTable></Document>"#);
-    let story =
-        STORY.replace("<ParagraphStyleRange ", "<ParagraphStyleRange Mojikumi=\"MojikumiTable/Spacing\" KinsokuType=\"KinsokuPushOutFirst\" ");
+    let story = STORY.replace("<ParagraphStyleRange ", "<ParagraphStyleRange Mojikumi=\"uMojikumi1\" KinsokuType=\"KinsokuPushOutFirst\" ");
     let bytes = zip_files(&[
         ("designmap.xml", &map),
         ("Resources/Graphic.xml", GRAPHIC),

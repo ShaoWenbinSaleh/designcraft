@@ -21,6 +21,7 @@ pub mod endnotes;
 pub mod ids;
 pub mod index;
 pub mod item;
+pub mod mojikumi;
 pub mod notes;
 pub mod otf;
 pub mod page;

@@ -1,5 +1,7 @@
 # DesignCraft roadmap
 
+- CJK-MOJI1: resolve Chinese and half-em Mojikumi presets and directional custom overrides; preserve IDML table references independently of display names.
+
 - FONT7: replacement recommendations check the characters actually used; placeholder LastResort fonts and glyph-zero mappings cannot masquerade as glyph coverage or suppress missing-glyph diagnostics.
 
 - FONT6: localized and legacy family/style names share canonical resolution across shaping, inventory and replacement. Known compatible and script-based substitutes retain missing status; Find Font shows the resolved face and offers it as the replacement, while preflight reports unavailable styles.
