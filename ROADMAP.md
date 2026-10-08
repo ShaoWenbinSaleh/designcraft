@@ -1,5 +1,7 @@
 # DesignCraft roadmap
 
+- CJK-MOJI4: resolve all public Mojikumi preset names and their distinct paragraph/line-edge policies; correct consecutive punctuation defaults and small-kana classes.
+
 - CJK-MOJI3: use the composition rule resolver in preflight, report unknown Mojikumi presets and retain regression coverage for supported and unsupported settings.
 
 - CJK-MOJI2: share Mojikumi pair and line-edge metrics between breaking and placement; honor spacing bounds, compression priorities, explicit aki and kinsoku policies.
