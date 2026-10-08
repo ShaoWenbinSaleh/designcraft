@@ -1,5 +1,7 @@
 # DesignCraft roadmap
 
+- FONT5: missing-glyph preflight inspects rendered characters in generated labels, including zero-length continuation glyphs, and identifies the owning page frame for nested text.
+
 - FONT4: generated note labels resolve composite character mappings and glyph fallback while retaining a single source anchor; composed glyphs retain the actual rendered character for diagnostics.
 
 - AR1.1: Kashida justification tests verify space fallback without Tatweel fonts using an isolated font database, while retaining elongation assertions when fonts support it.
