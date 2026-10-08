@@ -76,7 +76,6 @@ pub fn check(s: &Session, min_ppi: f64) -> Vec<Issue> {
     let d = &st.doc;
     let mut out = Vec::new();
     // Stories: overset and fonts.
-    let db = designcraft_fonts::FontDb::global().scoped(d.font_scope);
     let mut missing_fonts: Vec<String> = Vec::new();
     let mut unsupported_typography = std::collections::BTreeSet::new();
     let mut missing: Vec<(FaceRef, Vec<char>)> = Vec::new();
@@ -113,7 +112,6 @@ pub fn check(s: &Session, min_ppi: f64) -> Vec<Issue> {
                 unsupported_typography
                     .insert(format!("Kinsoku priority `{}` is preserved, but push-in/push-out priority is not applied", para.kinsoku_type));
             }
-            let mut fams = vec![base.font_family.clone()];
             for (run, f) in story.runs().filter(|(run, _)| run.start < range.end && run.end > range.start) {
                 let props = d.styles.resolve_char(&base, f);
                 if has_rtl
@@ -130,17 +128,14 @@ pub fn check(s: &Session, min_ppi: f64) -> Vec<Issue> {
                         unsupported_typography.insert(format!("Unknown positional form `{}` is preserved but not applied", props.positional_form));
                     }
                 }
-                fams.push(props.font_family);
             }
-            for fam in fams {
-                let composite = d.styles.composite_fonts.iter().find(|f| f.name == fam.trim_start_matches("CompositeFont/"));
-                let families: Vec<&str> = composite.map_or_else(|| vec![fam.as_str()], |f| f.entries.iter().map(|e| e.family.as_str()).collect());
-                for family in families {
-                    if !db.has_family(family) && !missing_fonts.iter().any(|f| f == family) {
-                        missing_fonts.push(family.to_string());
-                    }
-                }
-            }
+        }
+    }
+    // Use the same effective character-to-font mapping as Find Font, including
+    // anonymous note/cell stories. Unused composite entries are not missing text.
+    for font in super::fonts::used_fonts(d) {
+        if font.missing && !missing_fonts.contains(&font.family) {
+            missing_fonts.push(font.family);
         }
     }
     for f in missing_fonts {

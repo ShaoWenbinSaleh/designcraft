@@ -1877,3 +1877,42 @@ fn vertical_lines_fit_the_em_box() {
         assert!((l.baseline - col.y0 - ascent).abs() < 1e-9, "{family}: {} {}", l.baseline, col.y0);
     }
 }
+
+#[test]
+fn composite_metrics_and_character_mappings_apply_inside_footnotes() {
+    use designcraft_doc::cjk::{CompositeFont, CompositeFontEntry};
+    let (mut d, sid, _) = doc_with("Body", Rect::new(0.0, 0.0, 300.0, 300.0), ParaAttrs::default());
+    d.styles_mut().composite_fonts.push(CompositeFont {
+        name: "Mixed".into(),
+        entries: vec![
+            CompositeFontEntry { family: "Source Serif 4".into(), ..Default::default() },
+            CompositeFontEntry {
+                characters: "12".into(),
+                family: "Source Sans 3".into(),
+                relative_size: 0.8,
+                horizontal_scale: 0.9,
+                vertical_scale: 1.1,
+                baseline_shift: 0.1,
+                scale_option: false,
+                ..Default::default()
+            },
+            CompositeFontEntry { characters: "2".into(), family: "Inter".into(), ..Default::default() },
+        ],
+    });
+    let story = d.story_mut(sid).unwrap();
+    story.insert_note(4, "A12", ParaFormat::default());
+    let note = Arc::make_mut(&mut story.notes[0]);
+    note.text.format_chars(0..3, |f| f.over.font_family = Some("CompositeFont/Mixed".into()));
+    let cs = compose_story(&d, sid, &ComposeOptions::default());
+    let note = &cs.frames[0].notes[0];
+    let glyphs = &note.text.frames[0].lines[0].glyphs;
+    let a = glyphs.iter().find(|g| g.byte == 0 && g.len > 0).unwrap();
+    let one = glyphs.iter().find(|g| g.byte == 1 && g.len > 0).unwrap();
+    let two = glyphs.iter().find(|g| g.byte == 2 && g.len > 0).unwrap();
+    assert_eq!(a.face.family, "Source Serif 4");
+    assert_eq!(one.face.family, "Source Sans 3");
+    assert_eq!(two.face.family, "Inter");
+    let style = &note.text.styles[one.style as usize];
+    assert!((style.size - 9.6).abs() < 1e-8);
+    assert!(!note.text.styles.iter().any(|s| s.missing_font));
+}

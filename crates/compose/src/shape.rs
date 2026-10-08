@@ -234,8 +234,7 @@ pub(crate) fn shape_para(
             None => para_chars,
         };
         let props = styles.resolve_char(para_chars, fmt);
-        let family = props.font_family.trim_start_matches("CompositeFont/");
-        if let Some(font) = styles.composite_fonts.iter().find(|f| f.name == family) {
+        if let Some(font) = styles.composite_font(&props.font_family) {
             let mut start = a;
             let mut selected = None;
             for (offset, c) in story.text.get(a..b).unwrap_or("").char_indices() {
