@@ -565,3 +565,17 @@ fn preflight_distinguishes_unplaced_stories_and_locates_footnote_overset() {
     assert_eq!(unplaced["severity"], "warning");
     assert!(unplaced.get("page").is_none());
 }
+
+#[test]
+fn preflight_mojikumi_uses_the_same_supported_rules_as_composition() {
+    let mut s = session();
+    s.execute("frame.create", &json!({"rect": [36, 36, 300, 300], "content": "text", "text": "中文 A1"})).unwrap();
+    let story = s.doc().unwrap().doc.stories.keys().next().unwrap().0;
+    s.execute("text.select", &json!({"story": story, "anchor": 0, "focus": 1})).unwrap();
+    for (name, unsupported) in [("SimpChineseDefault", false), ("LineEndAllOneHalfEmEnum", false), ("UnknownPreset", true), ("Nothing", false)] {
+        s.execute("type.para", &json!({"attrs": {"mojikumi": name, "kinsokuType": "KinsokuPushInFirst"}})).unwrap();
+        let result = s.execute("preflight.run", &json!({})).unwrap();
+        let warnings: Vec<_> = result["issues"].as_array().unwrap().iter().filter(|i| i["kind"] == "unsupportedTypography").collect();
+        assert_eq!(!warnings.is_empty(), unsupported, "{name}: {warnings:?}");
+    }
+}

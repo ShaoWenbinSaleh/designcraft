@@ -155,10 +155,13 @@ pub fn check(s: &Session, min_ppi: f64) -> Vec<Issue> {
                         .insert("Paragraph Kashida width preset is preserved; automatic elongation uses the engine's bounded allocation".into());
                 }
             }
-            if !matches!(para.mojikumi.as_str(), "" | "Nothing" | "None") {
-                unsupported_typography.insert(format!("Mojikumi `{}` is preserved, but its spacing table is not applied", para.mojikumi));
+            if let Err(reason) = designcraft_doc::mojikumi::Rules::resolve(&d.styles, &para.mojikumi) {
+                unsupported_typography.insert(format!("Mojikumi `{}` is not applied: {reason}", para.mojikumi));
             }
-            if !para.kinsoku_type.is_empty() {
+            if !matches!(
+                para.kinsoku_type.as_str(),
+                "" | "KinsokuPushInFirst" | "KinsokuPushOutFirst" | "KinsokuPushOutOnly" | "KinsokuPrioritizeAdjustmentAmount"
+            ) {
                 unsupported_typography
                     .insert(format!("Kinsoku priority `{}` is preserved, but push-in/push-out priority is not applied", para.kinsoku_type));
             }

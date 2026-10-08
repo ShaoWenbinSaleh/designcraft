@@ -1,5 +1,7 @@
 # DesignCraft roadmap
 
+- CJK-MOJI3: use the composition rule resolver in preflight, report unknown Mojikumi presets and retain regression coverage for supported and unsupported settings.
+
 - CJK-MOJI2: share Mojikumi pair and line-edge metrics between breaking and placement; honor spacing bounds, compression priorities, explicit aki and kinsoku policies.
 
 - CJK-MOJI1: resolve Chinese and half-em Mojikumi presets and directional custom overrides; preserve IDML table references independently of display names.
