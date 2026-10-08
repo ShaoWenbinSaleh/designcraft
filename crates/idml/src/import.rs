@@ -104,6 +104,7 @@ struct Importer<'r> {
     inks: designcraft_doc::InkManager,
     stroke_styles: Vec<designcraft_doc::StrokeStyleDef>,
     styles: Styles,
+    composite_names: HashMap<String, String>,
     kinsoku: HashMap<String, designcraft_doc::cjk::Kinsoku>,
     para_names: HashMap<String, String>,
     char_names: HashMap<String, String>,
@@ -188,6 +189,7 @@ impl<'r> Importer<'r> {
             inks: Default::default(),
             stroke_styles: Vec::new(),
             styles,
+            composite_names: HashMap::new(),
             kinsoku: HashMap::new(),
             para_names: HashMap::new(),
             char_names: HashMap::new(),
@@ -273,6 +275,11 @@ impl<'r> Importer<'r> {
             }
         }
         for e in top.iter().filter(|e| e.local() == "CompositeFont") {
+            let name =
+                e.get("Name").map(str::to_string).unwrap_or_else(|| unescape_id(e.get("Self").unwrap_or("").trim_start_matches("CompositeFont/")));
+            if let Some(id) = e.get("Self") {
+                self.composite_names.insert(id.to_string(), format!("CompositeFont/{name}"));
+            }
             let entries = e
                 .find_all("CompositeFontEntry")
                 .map(|c| designcraft_doc::cjk::CompositeFontEntry {
@@ -287,7 +294,7 @@ impl<'r> Importer<'r> {
                     scale_option: c.boolean("ScaleOption").unwrap_or(true),
                 })
                 .collect();
-            self.styles.composite_fonts.push(designcraft_doc::cjk::CompositeFont { name: unescape_id(e.get("Name").unwrap_or("")), entries });
+            self.styles.composite_fonts.push(designcraft_doc::cjk::CompositeFont { name, entries });
         }
         for e in top.iter().filter(|e| e.local() == "KinsokuTable") {
             if e.get("CantBeginLineChars").is_some() || e.get("CantEndLineChars").is_some() {
@@ -376,11 +383,15 @@ impl<'r> Importer<'r> {
             self.index_topics_of(ix, &[]);
         }
         // Stories (ids first so frames can reference them).
+        let mut pending_stories = Vec::new();
         for e in top.iter().filter(|e| e.local() == "Story") {
             let id = StoryId(self.alloc());
             if let Some(s) = e.get("Self") {
                 self.story_ids.insert(s.to_string(), id);
             }
+            pending_stories.push((id, e));
+        }
+        for (id, e) in pending_stories {
             let story = self.story(id, e);
             self.stories.insert(id, story);
         }
@@ -1050,7 +1061,7 @@ impl<'r> Importer<'r> {
             // Some writers append the style after a tab.
             let fam = f.split('\t').next().unwrap_or(f);
             if !fam.is_empty() && fam != "$ID/" {
-                a.font_family = Some(fam.to_string());
+                a.font_family = Some(self.composite_names.get(fam).cloned().unwrap_or_else(|| fam.to_string()));
             }
         }
         a.font_style = e.prop("FontStyle");
@@ -1668,11 +1679,9 @@ impl<'r> Importer<'r> {
                         rcf.over.position = None;
                         b.push(&designcraft_doc::FOOTNOTE_REF.to_string(), &rcf);
                     }
-                    // Not supported yet: skip their content entirely.
-                    "Rectangle" | "Oval" | "Polygon" | "GraphicLine" | "Group" => {
-                        // An anchored object (text frames inside stories aren't supported yet).
-                        let has_text = c.find_all("TextFrame").next().is_some();
-                        if !has_text && let Some(item) = self.item(c, designcraft_geom::Affine::IDENTITY) {
+                    // Anchored page items, including groups containing text frames.
+                    "Rectangle" | "Oval" | "Polygon" | "GraphicLine" | "Group" | "TextFrame" => {
+                        if let Some(item) = self.item(c, designcraft_geom::Affine::IDENTITY) {
                             use designcraft_doc::anchored::AnchorAlign as A;
                             let set = c.find("AnchoredObjectSetting");
                             let get = |k: &str| set.and_then(|s| s.num(k)).unwrap_or(0.0);
@@ -1714,7 +1723,7 @@ impl<'r> Importer<'r> {
                             b.push(&designcraft_doc::OBJECT_MARK.to_string(), cf);
                         }
                     }
-                    "Properties" | "Note" | "TextFrame" | "StoryPreference" | "InCopyExportOption" | "TextVariableInstance" => {}
+                    "Properties" | "Note" | "StoryPreference" | "InCopyExportOption" | "TextVariableInstance" => {}
                     _ => self.walk_story(c, b, pf, pchars, cf, brk),
                 },
                 Node::Pi(t, v) if t == "ACE" => {
@@ -2147,8 +2156,8 @@ impl<'r> Importer<'r> {
         let threads = std::mem::take(&mut self.ctx.threads);
         let by_self: HashMap<String, ItemId> = self.item_ids.clone();
         let mut per_story: BTreeMap<StoryId, Vec<usize>> = BTreeMap::new();
-        for (i, (id, _, _, _)) in threads.iter().enumerate() {
-            let sid = self.frame_story(*id);
+        for (i, (id, story, _, _)) in threads.iter().enumerate() {
+            let sid = self.story_ids.get(story).copied().or_else(|| self.frame_story(*id));
             if let Some(sid) = sid {
                 per_story.entry(sid).or_default().push(i);
             }
