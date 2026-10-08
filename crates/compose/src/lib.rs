@@ -1668,7 +1668,10 @@ fn layout_line(
     };
     let justify_this = align.is_justified() && (!last || align == Align::FullyJustified || forced_mid) && !has_tab;
     // A justified paragraph's last line may have been composed with shrunk spaces: shrink it too.
-    let squeeze_last = !justify_this && !has_tab && extra < 0.0 && (align.is_justified() || line.iter().any(|g| g.moji.shrink > 0.0));
+    let squeeze_last = !justify_this
+        && !has_tab
+        && extra < 0.0
+        && (align.is_justified() || line.iter().any(|g| g.moji.shrink > 0.0 || mojikumi::start_elastic(g, false, true)[1] > 0.0));
     // Extra advance per glyph (word spaces and letter gaps) and horizontal scale per glyph.
     let mut add = vec![0.0; line.len()];
     let mut scale = vec![1.0; line.len()];

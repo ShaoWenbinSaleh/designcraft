@@ -2228,3 +2228,68 @@ fn mojikumi_priority_and_elastic_line_start_are_used_in_placement() {
     assert!((line.end_x - 30.0).abs() < 0.001);
     assert!(line.glyphs[0].x > 10.0, "Leading gap must move the first outline too");
 }
+
+#[test]
+fn mojikumi_equal_priority_shares_leading_and_internal_space() {
+    use designcraft_doc::cjk::{MojikumiAki, MojikumiTable};
+    let (mut d, sid, _) = doc_with("A1", Rect::new(0.0, 0.0, 40.0, 100.0), ParaAttrs::default());
+    let natural = compose_story(&d, sid, &ComposeOptions::default());
+    let old = all_lines(&natural)[0];
+    let extra = 40.0 - old.end_x;
+    let old_second = old.glyphs[1].x;
+    Arc::make_mut(&mut d.styles).mojikumi_tables.push(MojikumiTable {
+        name: "Shared".into(),
+        based_on: "SimpChineseDefault".into(),
+        overrides: [(18, 23, false), (18, 25, true)]
+            .into_iter()
+            .map(|(target_class, side_class, after)| MojikumiAki {
+                target_class,
+                side_class,
+                after,
+                maximum: 10.0,
+                priority: 1,
+                ..Default::default()
+            })
+            .collect(),
+    });
+    let para = &mut d.story_mut(sid).unwrap().paras[0].para;
+    para.mojikumi = Some("MojikumiTable/Shared".into());
+    para.align = Some(Align::FullyJustified);
+    let result = compose_story(&d, sid, &ComposeOptions::default());
+    let line = all_lines(&result)[0];
+    assert!((line.glyphs[0].x - extra / 2.0).abs() < 0.001);
+    assert!((line.glyphs[1].x - old_second - extra).abs() < 0.001);
+    assert!((line.end_x - 40.0).abs() < 0.001);
+}
+
+#[test]
+fn mojikumi_nonfloating_and_leading_only_compression_fit_ragged_lines() {
+    use designcraft_doc::cjk::{MojikumiAki, MojikumiTable};
+    for composer in [Composer::SingleLine, Composer::Paragraph] {
+        for leading in [true, false] {
+            let (mut d, sid, _) = doc_with(
+                "A",
+                Rect::new(0.0, 0.0, 15.0, 100.0),
+                ParaAttrs { composer: Some(composer), mojikumi: Some("MojikumiTable/Endpoint".into()), ..Default::default() },
+            );
+            Arc::make_mut(&mut d.styles).mojikumi_tables.push(MojikumiTable {
+                name: "Endpoint".into(),
+                based_on: "SimpChineseDefault".into(),
+                overrides: vec![MojikumiAki {
+                    target_class: 18,
+                    side_class: if leading { 23 } else { 22 },
+                    after: !leading,
+                    minimum: 0.0,
+                    desired: 1.0,
+                    maximum: 1.0,
+                    priority: 1,
+                    does_not_float: true,
+                }],
+            });
+            let result = compose_story(&d, sid, &ComposeOptions::default());
+            let line = all_lines(&result)[0];
+            assert!(line.end_x <= 15.0, "{composer:?}, leading={leading}: {}", line.end_x);
+            assert!(line.glyphs[0].x.abs() < 0.001, "Discrete leading gap must reach its endpoint");
+        }
+    }
+}

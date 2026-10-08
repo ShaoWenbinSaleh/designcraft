@@ -1,5 +1,6 @@
 # DesignCraft roadmap
 
+- CJK-MOJI5: share equal-priority boundary spacing and honor discrete compression endpoints, including leading-only ragged-line fitting.
 - CJK-MOJI4: resolve all public Mojikumi preset names and their distinct paragraph/line-edge policies; correct consecutive punctuation defaults and small-kana classes.
 
 - CJK-MOJI3: use the composition rule resolver in preflight, report unknown Mojikumi presets and retain regression coverage for supported and unsupported settings.

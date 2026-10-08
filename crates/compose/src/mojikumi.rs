@@ -104,46 +104,38 @@ pub fn edges(line: &mut [Glyph]) {
 pub fn distribute(line: &mut [Glyph], extra: f64, add: &mut [f64]) -> f64 {
     let mut rem = extra.abs();
     let sign = extra.signum();
-    for priority in 0..=10 {
-        // Start and following gaps share the same priority queue. Moving a
-        // leading gap also moves the glyph outline, not just the next glyph.
-        for before in [true, false] {
-            let properties = |g: &Glyph| {
-                if before {
-                    let a = g.moji.start_aki;
-                    let cap = if !g.moji.at_start || g.moji.explicit_before {
-                        0.0
-                    } else if sign < 0.0 {
-                        (a.desired - a.min).max(0.0) * em(g)
-                    } else {
-                        (a.max - a.desired).max(0.0) * em(g)
-                    };
-                    (a.priority, a.discrete, cap)
-                } else {
-                    (g.moji.priority, g.moji.discrete, if sign < 0.0 { g.moji.shrink } else { g.moji.stretch })
-                }
+    let properties = |g: &Glyph, before: bool| {
+        if before {
+            let a = g.moji.start_aki;
+            let cap = if !g.moji.at_start || g.moji.explicit_before {
+                0.0
+            } else if sign < 0.0 {
+                (a.desired - a.min).max(0.0) * em(g)
+            } else {
+                (a.max - a.desired).max(0.0) * em(g)
             };
+            (a.priority, a.discrete, cap)
+        } else {
+            (g.moji.priority, g.moji.discrete, if sign < 0.0 { g.moji.shrink } else { g.moji.stretch })
+        }
+    };
+    for priority in 0..=10 {
+        if rem <= 1e-9 {
+            break;
+        }
+        // Leading and following continuous gaps participate in one pool.
+        // Equal priorities must not depend on whether a gap precedes a glyph.
+        let total: f64 = line
+            .iter()
+            .flat_map(|g| [true, false].map(|before| properties(g, before)))
+            .filter(|&(p, discrete, _)| p == priority && !discrete)
+            .map(|(_, _, cap)| cap)
+            .sum();
+        if total > 0.0 {
+            let take = rem.min(total);
             for (g, a) in line.iter_mut().zip(add.iter_mut()) {
-                let (p, discrete, cap) = properties(g);
-                if p == priority && discrete && cap <= rem + 1e-9 {
-                    *a += sign * cap;
-                    if before {
-                        g.dx += sign * cap;
-                    }
-                    rem = (rem - cap).max(0.0);
-                }
-            }
-            let total: f64 = line
-                .iter()
-                .map(|g| {
-                    let (p, discrete, cap) = properties(g);
-                    if p == priority && !discrete { cap } else { 0.0 }
-                })
-                .sum();
-            if total > 0.0 {
-                let take = rem.min(total);
-                for (g, a) in line.iter_mut().zip(add.iter_mut()) {
-                    let (p, discrete, cap) = properties(g);
+                for before in [true, false] {
+                    let (p, discrete, cap) = properties(g, before);
                     if p == priority && !discrete {
                         let amount = sign * take * cap / total;
                         *a += amount;
@@ -152,7 +144,22 @@ pub fn distribute(line: &mut [Glyph], extra: f64, add: &mut [f64]) -> f64 {
                         }
                     }
                 }
-                rem -= take;
+            }
+            rem -= take;
+        }
+        // Never interpolate a non-floating rule. Compression may have to use
+        // its entire endpoint even when that leaves a little unused line width;
+        // refusing it would contradict the capacity accepted by the breaker.
+        for (g, a) in line.iter_mut().zip(add.iter_mut()) {
+            for before in [true, false] {
+                let (p, discrete, cap) = properties(g, before);
+                if rem > 1e-9 && p == priority && discrete && cap > 0.0 && (sign < 0.0 || cap <= rem + 1e-9) {
+                    *a += sign * cap;
+                    if before {
+                        g.dx += sign * cap;
+                    }
+                    rem -= cap;
+                }
             }
         }
     }
