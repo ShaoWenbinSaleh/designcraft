@@ -138,6 +138,9 @@ pub fn check(s: &Session, min_ppi: f64) -> Vec<Issue> {
                 page: location.and_then(|(_, page)| page),
             });
         }
+    }
+    // Nested note and cell text uses paragraph rules too.
+    super::fonts::for_each_story(d, &mut |story| {
         let ranges = story.para_ranges();
         for (pi, pf) in story.paras.iter().enumerate() {
             let (para, base) = d.styles.resolve_para(pf);
@@ -183,7 +186,7 @@ pub fn check(s: &Session, min_ppi: f64) -> Vec<Issue> {
                 }
             }
         }
-    }
+    });
     // Use the same effective character-to-font mapping as Find Font, including
     // anonymous note/cell stories. Unused composite entries are not missing text.
     for font in super::fonts::used_fonts(d) {
@@ -401,5 +404,27 @@ mod generated_glyph_tests {
         assert!(issue["message"].as_str().unwrap().contains('\u{10fffd}'));
         assert_eq!(issue["item"], created["id"]);
         assert_eq!(issue["page"], 0);
+    }
+}
+
+#[cfg(test)]
+mod mojikumi_nested_tests {
+    use super::*;
+    use std::sync::Arc;
+    #[test]
+    fn unknown_table_in_a_note_inside_a_cell_is_reported() {
+        let mut s = Session::new();
+        s.execute("file.new", &json!({})).unwrap();
+        s.execute("frame.create", &json!({"rect":[20,20,300,400],"content":"text","text":"Body"})).unwrap();
+        let d = Arc::make_mut(&mut s.doc_mut().unwrap().doc);
+        let sid = *d.stories.keys().next().unwrap();
+        let mut table = designcraft_doc::Table::new(1, 1, 1, 0, 0, 100.0);
+        let cell = &mut table.cells[0].text;
+        let mut pf = designcraft_doc::ParaFormat::default();
+        pf.para.mojikumi = Some("MojikumiTable/Unrecognized".into());
+        cell.insert_note(0, "Note", pf);
+        d.story_mut(sid).unwrap().insert_table(0, table);
+        let issues = check(&s, 150.0);
+        assert_eq!(issues.iter().filter(|i| i.kind == "unsupportedTypography" && i.message.contains("Unrecognized")).count(), 1);
     }
 }

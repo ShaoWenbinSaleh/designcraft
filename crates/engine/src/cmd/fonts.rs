@@ -29,7 +29,7 @@ pub fn specs() -> Vec<CommandSpec> {
 }
 
 /// Every story's text, including table cells and footnotes.
-fn for_each_story(d: &Document, f: &mut dyn FnMut(&Story)) {
+pub(super) fn for_each_story(d: &Document, f: &mut dyn FnMut(&Story)) {
     let mut pending: Vec<&Story> = d.stories.values().map(AsRef::as_ref).collect();
     while let Some(st) = pending.pop() {
         f(st);

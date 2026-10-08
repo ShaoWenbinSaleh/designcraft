@@ -143,6 +143,43 @@ fn lab_to_color(l: f32, a: f32, b: f32) -> Color {
     Color::rgb(rgb[0], rgb[1], rgb[2])
 }
 
+fn mojikumi_row(e: &El) -> Result<designcraft_doc::cjk::MojikumiAki> {
+    let number = |key: &str, required: bool| -> Result<f64> {
+        let Some(raw) = e.prop(key) else {
+            return if required { Err(IdmlError::Invalid(format!("Mojikumi row is missing {key}"))) } else { Ok(0.0) };
+        };
+        raw.trim().parse::<f64>().ok().filter(|v| v.is_finite()).ok_or_else(|| IdmlError::Invalid(format!("Mojikumi row has invalid {key}")))
+    };
+    let integer = |key: &str, required: bool| -> Result<i16> {
+        let v = number(key, required)?;
+        if v.fract() != 0.0 || v < f64::from(i16::MIN) || v > f64::from(i16::MAX) {
+            return Err(IdmlError::Invalid(format!("Mojikumi {key} must be an in-range integer")));
+        }
+        Ok(v as i16)
+    };
+    let boolean = |key: &str| -> Result<bool> {
+        match e.prop(key).as_deref().map(str::trim) {
+            None | Some("false") => Ok(false),
+            Some("true") => Ok(true),
+            _ => Err(IdmlError::Invalid(format!("Mojikumi row has invalid {key}"))),
+        }
+    };
+    let row = designcraft_doc::cjk::MojikumiAki {
+        target_class: integer("TargetMojikumiClass", true)?,
+        side_class: integer("SideMojikumiClass", true)?,
+        after: boolean("SideIsAfterTarget")?,
+        minimum: number("Minimum", false)?,
+        desired: number("Desired", false)?,
+        maximum: number("Maximum", false)?,
+        priority: integer("CompressionPriority", false)?,
+        does_not_float: boolean("AkiDoesNotFloat")?,
+    };
+    if !designcraft_doc::mojikumi::valid_range(&row) {
+        return Err(IdmlError::Invalid("Mojikumi row has an invalid spacing range or priority".into()));
+    }
+    Ok(row)
+}
+
 fn nums(s: &str) -> Vec<f64> {
     s.split_whitespace().filter_map(|v| v.parse().ok()).collect()
 }
@@ -316,23 +353,11 @@ impl<'r> Importer<'r> {
             if let (Some(id), Some(name)) = (e.get("Self"), e.get("Name")) {
                 self.mojikumi_names.insert(id.into(), format!("MojikumiTable/{}", unescape_id(name)));
             }
-            let overrides = e
-                .prop_el("OverrideMojikumiAkiList")
-                .map(|l| {
-                    l.find_all("OverrideMojikumiAkiType")
-                        .map(|r| designcraft_doc::cjk::MojikumiAki {
-                            target_class: r.num("TargetMojikumiClass").unwrap_or(0.0) as i16,
-                            side_class: r.num("SideMojikumiClass").unwrap_or(0.0) as i16,
-                            after: r.boolean("SideIsAfterTarget").unwrap_or(false),
-                            minimum: r.num("Minimum").unwrap_or(0.0),
-                            desired: r.num("Desired").unwrap_or(0.0),
-                            maximum: r.num("Maximum").unwrap_or(0.0),
-                            priority: r.num("CompressionPriority").unwrap_or(0.0) as i16,
-                            does_not_float: r.boolean("AkiDoesNotFloat").unwrap_or(false),
-                        })
-                        .collect()
-                })
-                .unwrap_or_default();
+            let overrides = if let Some(list) = e.prop_el("OverrideMojikumiAkiList") {
+                list.find_all("OverrideMojikumiAkiType").map(mojikumi_row).collect::<Result<Vec<_>>>()?
+            } else {
+                Vec::new()
+            };
             self.styles.mojikumi_tables.push(designcraft_doc::cjk::MojikumiTable {
                 name: unescape_id(e.get("Name").unwrap_or("")),
                 based_on: e.get("BasedOnMojikumiSet").unwrap_or("").into(),

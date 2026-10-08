@@ -121,11 +121,7 @@ impl<'a> Rules<'a> {
             if !valid_class(r.target_class) || !valid_class(r.side_class) {
                 return Err(format!("unsupported character classes {}/{}", r.target_class, r.side_class));
             }
-            if ![r.minimum, r.desired, r.maximum].iter().all(|v| v.is_finite() && (-1.0..=100.0).contains(v))
-                || r.minimum > r.desired
-                || r.desired > r.maximum
-                || !(0..=9).contains(&r.priority)
-            {
+            if !valid_range(r) {
                 return Err("invalid spacing range or priority".into());
             }
         }
@@ -179,6 +175,15 @@ impl<'a> Rules<'a> {
         }
         Aki::default()
     }
+}
+
+/// Structural validation shared by native document loading and interchange.
+/// Unknown integer classes remain preservable and are diagnosed by the resolver.
+pub fn valid_range(r: &MojikumiAki) -> bool {
+    [r.minimum, r.desired, r.maximum].iter().all(|v| v.is_finite() && (-1.0..=100.0).contains(v))
+        && r.minimum <= r.desired
+        && r.desired <= r.maximum
+        && (0..=9).contains(&r.priority)
 }
 
 pub fn valid_class(c: i16) -> bool {

@@ -936,3 +936,35 @@ fn composite_references_resolve_by_identity_and_export_as_objects() {
     let back = import_idml(&output).unwrap();
     assert_eq!(back.styles.composite_fonts, d.styles.composite_fonts);
 }
+
+#[test]
+fn malformed_mojikumi_rows_are_not_silently_coerced() {
+    let good = r#"<OverrideMojikumiAkiType TargetMojikumiClass="12" SideMojikumiClass="18" SideIsAfterTarget="true" Minimum="0" Desired="0.25" Maximum="0.5" CompressionPriority="3" AkiDoesNotFloat="false"/>"#;
+    for (key, value) in [
+        ("TargetMojikumiClass", "12.9"),
+        ("SideMojikumiClass", "65536"),
+        ("Minimum", "NaN"),
+        ("Desired", "oops"),
+        ("Minimum", "0.4"),
+        ("Maximum", "0.1"),
+        ("CompressionPriority", "10"),
+        ("AkiDoesNotFloat", "maybe"),
+    ] {
+        let mut row = crate::xml::parse(good.as_bytes()).unwrap();
+        row.set(key, value);
+        let mut xml = String::new();
+        row.write(&mut xml, 0);
+        let map = DESIGNMAP.replace("</Document>", &format!("<MojikumiTable Name=\"Bad\" BasedOnMojikumiSet=\"SimpChineseDefault\"><Properties><OverrideMojikumiAkiList>{xml}</OverrideMojikumiAkiList></Properties></MojikumiTable></Document>"));
+        let bytes = zip_files(&[
+            ("designmap.xml", &map),
+            ("Resources/Graphic.xml", GRAPHIC),
+            ("Resources/Styles.xml", STYLES),
+            ("Resources/Preferences.xml", PREFS),
+            ("MasterSpreads/MasterSpread_m1.xml", MASTER),
+            ("Spreads/Spread_sp1.xml", SPREAD),
+            ("Stories/Story_s1.xml", STORY),
+        ]);
+        let err = import_idml(&bytes).unwrap_err().to_string();
+        assert!(err.contains("Mojikumi"), "{key}={value}: {err}");
+    }
+}
