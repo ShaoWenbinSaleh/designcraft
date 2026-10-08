@@ -117,9 +117,62 @@ fn replace(s: &mut Session, p: &Value) -> Result<Value> {
     let style = str_param(p, "style").map(str::to_string);
     let to_family = str_param(p, "toFamily").ok_or_else(|| bad("font.replace", "missing toFamily"))?.to_string();
     let to_style = str_param(p, "toStyle").map(str::to_string);
+    let db = designcraft_fonts::FontDb::global().scoped(s.doc()?.doc.font_scope);
+    if family.trim().is_empty() || to_family.trim().is_empty() || !db.has_family(&to_family) {
+        return Err(bad("font.replace", "Choose an available replacement font family"));
+    }
+    if let Some(style) = &to_style
+        && !db.styles(&to_family).iter().any(|available| available.eq_ignore_ascii_case(style))
+    {
+        return Err(bad("font.replace", "Choose an available replacement font style"));
+    }
     let styles_too = p.get("redefineStyles").and_then(Value::as_bool).unwrap_or(true);
     s.edit(|d, _| {
         let mut changed = 0usize;
+        // Resolve text against the original styles before redefining them. Font family and
+        // style can be inherited independently through paragraph and character formatting.
+        let original_styles = d.styles.clone();
+        let ids: Vec<_> = d.stories.keys().copied().collect();
+        for sid in ids {
+            let Some(st) = d.story_mut(sid) else { continue };
+            let mut pending = vec![st];
+            while let Some(st) = pending.pop() {
+                let mut ranges = Vec::new();
+                for (pi, paragraph) in st.para_ranges().iter().enumerate() {
+                    let Some(format) = st.paras.get(pi) else { continue };
+                    let (_, base) = original_styles.resolve_para(format);
+                    for (run, format) in st.runs() {
+                        let start = run.start.max(paragraph.start);
+                        // An empty paragraph still uses its paragraph-break character's font.
+                        let end = if paragraph.is_empty() && run.contains(&paragraph.start) {
+                            st.text.get(start..).and_then(|tail| tail.chars().next()).map_or(start, |c| start.saturating_add(c.len_utf8()))
+                        } else {
+                            run.end.min(paragraph.end)
+                        };
+                        if start >= end {
+                            continue;
+                        }
+                        let effective = original_styles.resolve_char(&base, format);
+                        if effective.font_family.eq_ignore_ascii_case(&family)
+                            && style.as_ref().is_none_or(|s| effective.font_style.eq_ignore_ascii_case(s))
+                        {
+                            ranges.push(start..end);
+                        }
+                    }
+                }
+                for range in ranges {
+                    st.format_chars(range, |format| {
+                        format.over.font_family = Some(to_family.clone());
+                        if let Some(style) = &to_style {
+                            format.over.font_style = Some(style.clone());
+                        }
+                    });
+                    changed += 1;
+                }
+                pending.extend(st.tables.values_mut().flat_map(|t| Arc::make_mut(t).cells.iter_mut().map(|c| &mut c.text)));
+                pending.extend(st.notes.iter_mut().chain(&mut st.endnotes).map(|n| &mut Arc::make_mut(n).text));
+            }
+        }
         if styles_too {
             let st = d.styles_mut();
             for ps in &mut st.paragraph {
@@ -140,32 +193,6 @@ fn replace(s: &mut Session, p: &Value) -> Result<Value> {
                 }
             }
         }
-        // Local formatting in every story (cells and footnotes too).
-        let fix = |st: &mut Story, changed: &mut usize| {
-            let mut any = false;
-            for r in &mut st.chars {
-                if swap(&mut r.format.over, &family, style.as_deref(), &to_family, to_style.as_deref()) {
-                    any = true;
-                    *changed += 1;
-                }
-            }
-            if any {
-                st.rev += 1;
-            }
-        };
-        let ids: Vec<_> = d.stories.keys().copied().collect();
-        for sid in ids {
-            let Some(st) = d.story_mut(sid) else { continue };
-            fix(st, &mut changed);
-            for t in st.tables.values_mut() {
-                for c in &mut Arc::make_mut(t).cells {
-                    fix(&mut c.text, &mut changed);
-                }
-            }
-            for n in &mut st.notes {
-                fix(&mut Arc::make_mut(n).text, &mut changed);
-            }
-        }
         Ok(json!({"changed": changed}))
     })
 }
@@ -173,6 +200,27 @@ fn replace(s: &mut Session, p: &Value) -> Result<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn replacement_resolves_inherited_family_and_style_and_rejects_missing_targets() {
+        let mut s = Session::new();
+        s.execute("file.new", &json!({})).unwrap();
+        s.execute("frame.create", &json!({"rect": [0,0,200,200], "content":"text", "text":"Inherited\n\nEnd"})).unwrap();
+        let d = Arc::make_mut(&mut s.doc_mut().unwrap().doc);
+        let sid = *d.stories.keys().next().unwrap();
+        let story = d.story_mut(sid).unwrap();
+        for para in &mut story.paras {
+            para.chars.font_family = Some("Unavailable Family".into());
+        }
+        let before = s.execute("font.list", &json!({})).unwrap();
+        let style = before[0]["style"].clone();
+        assert!(s.execute("font.replace", &json!({"family":"Unavailable Family", "toFamily":"Also Missing"})).is_err());
+        assert_eq!(before, s.execute("font.list", &json!({})).unwrap());
+        s.execute("font.replace", &json!({"family":"Unavailable Family", "style":style, "toFamily":"Source Sans 3", "toStyle":"Regular"})).unwrap();
+        assert!(s.execute("font.list", &json!({})).unwrap().as_array().unwrap().iter().all(|f| f["missing"] == false));
+        s.execute("edit.undo", &json!({})).unwrap();
+        assert_eq!(before, s.execute("font.list", &json!({})).unwrap());
+    }
 
     #[test]
     fn find_and_replace_font() {
