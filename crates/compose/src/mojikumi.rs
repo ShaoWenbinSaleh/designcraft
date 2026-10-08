@@ -8,6 +8,8 @@ use designcraft_doc::{
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Metrics {
     pub active: bool,
+    /// Shaped body width before tracking and manual character spacing.
+    pub body: f64,
     /// Desired internal gap attached to this glyph's advance.
     pub gap: f64,
     pub stretch: f64,
@@ -38,42 +40,68 @@ fn em(g: &Glyph) -> f64 {
 
 pub fn apply(glyphs: &mut [Glyph], styles: &Styles, name: &str) {
     let Ok(Some(table)) = Rules::resolve(styles, name) else { return };
-    // Remove punctuation's built-in blank half-body. The table then contributes
-    // the desired spacing once per boundary, rather than adding it twice.
-    for g in glyphs.iter_mut().filter(|g| eligible(g)) {
-        g.moji.active = true;
-        let class = rules::class(g.rendered_char);
-        let unit = em(g);
-        if g.adv >= unit * 0.8 {
-            let before = if g.moji.explicit_before { 0.0 } else { rules::leading(class) * unit };
-            let after = if g.moji.explicit_after { 0.0 } else { rules::trailing(class) * unit };
-            g.adv = (g.adv - before - after).max(0.0);
-            g.dx -= before;
+    // Boundaries belong to shaped clusters, not individual glyphs. In particular
+    // the advance carrying a following gap must come after all attached marks.
+    let mut clusters = Vec::new();
+    let mut start = 0;
+    while start < glyphs.len() {
+        let byte = glyphs[start].byte;
+        let mut end = start + 1;
+        while end < glyphs.len() && glyphs[end].byte == byte {
+            end += 1;
         }
+        clusters.push((start, end));
+        start = end;
     }
-    for i in 0..glyphs.len() {
-        let (left, right) = glyphs.split_at_mut(i + 1);
-        let Some(g) = left.last_mut() else { continue };
-        if !g.moji.active {
+    for &(start, end) in &clusters {
+        let cluster = &mut glyphs[start..end];
+        if !cluster.iter().any(eligible) {
             continue;
         }
-        let c = rules::class(g.rendered_char);
-        let unit = em(g);
-        let start = table.pair(if i == 0 { 23 } else { 22 }, c);
-        g.moji.start_aki = start;
-        g.moji.start = if g.moji.explicit_before { 0.0 } else { start.desired * unit };
-        g.moji.end_aki = table.pair(c, 22);
-        let mut gap = Aki::default();
-        if let Some(next) = right.first().filter(|n| n.moji.active && n.byte != g.byte)
-            && !g.moji.explicit_after
-            && !next.moji.explicit_before
-        {
-            gap = table.pair(c, rules::class(next.rendered_char));
+        let class = rules::class(cluster[0].rendered_char);
+        let unit = em(&cluster[0]);
+        let body: f64 = cluster.iter().map(|g| g.moji.body).sum();
+        for g in cluster.iter_mut() {
+            g.moji.active = true;
         }
-        let desired = (gap.desired * unit).max(-g.adv);
+        // Tracking must not make a proportional or half-width glyph appear to
+        // contain a removable half-em body. Shaping features already affect body.
+        if body >= unit * 0.8 {
+            let before = if cluster[0].moji.explicit_before { 0.0 } else { table.leading(class) * unit };
+            let after = if cluster[0].moji.explicit_after { 0.0 } else { table.trailing(class) * unit };
+            let trim = before + after;
+            if let Some(owner) = cluster.iter().position(|g| g.adv >= trim) {
+                cluster[owner].adv -= trim;
+                for (i, g) in cluster.iter_mut().enumerate() {
+                    g.dx += if i > owner { trim - before } else { -before };
+                }
+            }
+        }
+        let head = &mut cluster[0];
+        head.moji.start_aki = table.pair(if start == 0 { 23 } else { 22 }, class);
+        head.moji.start = if head.moji.explicit_before { 0.0 } else { head.moji.start_aki.desired * unit };
+    }
+    for (index, &(start, end)) in clusters.iter().enumerate() {
+        if !glyphs[start].moji.active {
+            continue;
+        }
+        let class = rules::class(glyphs[start].rendered_char);
+        let unit = em(&glyphs[start]);
+        let mut gap = Aki::default();
+        if let Some(&(next, _)) = clusters.get(index + 1)
+            && glyphs[next].moji.active
+            && !glyphs[end - 1].moji.explicit_after
+            && !glyphs[next].moji.explicit_before
+        {
+            gap = table.pair(class, rules::class(glyphs[next].rendered_char));
+        }
+        let width: f64 = glyphs[start..end].iter().map(|g| g.adv).sum();
+        let g = &mut glyphs[end - 1];
+        g.moji.end_aki = table.pair(class, 22);
+        let desired = (gap.desired * unit).max(-width);
         g.moji.gap = desired;
         g.moji.stretch = (gap.max * unit - desired).max(0.0);
-        g.moji.shrink = (desired - gap.min * unit).max(0.0).min(g.adv + desired);
+        g.moji.shrink = (desired - gap.min * unit).max(0.0).min(width + desired);
         g.moji.priority = gap.priority;
         g.moji.discrete = gap.discrete;
         g.moji.end = if g.moji.explicit_after { 0.0 } else { g.moji.end_aki.desired * unit } - desired;

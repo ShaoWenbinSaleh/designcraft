@@ -49,12 +49,30 @@ impl Preset {
             (1..=16).contains(&n).then_some(Self(n))
         })
     }
+    fn leading(self, c: i16) -> f64 {
+        if self.0 == 15 && matches!(c, 6 | 21 | 30 | 31) {
+            0.25
+        } else if self.0 == 16 && c == 32 {
+            0.0
+        } else {
+            leading(c)
+        }
+    }
+    fn trailing(self, c: i16) -> f64 {
+        if self.0 == 15 && matches!(c, 6 | 21 | 30 | 31) {
+            0.25
+        } else if self.0 == 16 && c == 32 {
+            0.5
+        } else {
+            trailing(c)
+        }
+    }
     fn boundary(self, left: i16, right: i16) -> Option<Aki> {
         let n = self.0;
         let open = |c| matches!(c, 1 | 26 | 27);
         if left == 23 {
             if n >= 15 {
-                return Some(Aki::fixed(leading(right)));
+                return Some(Aki::fixed(self.leading(right)));
             }
             let indent = if matches!(n, 1 | 10 | 11 | 14) { 0.0 } else { 1.0 };
             let opening = match n {
@@ -63,13 +81,13 @@ impl Preset {
                 4 | 6 | 9 | 12 => 1.0,
                 _ => 0.0,
             };
-            return Some(Aki::fixed(if open(right) { opening } else { indent + leading(right) }));
+            return Some(Aki::fixed(if open(right) { opening } else { indent + self.leading(right) }));
         }
         if left == 22 {
-            return Some(Aki::fixed(if n >= 15 || matches!(n, 4 | 5 | 10) { leading(right) } else { 0.0 }));
+            return Some(Aki::fixed(if n >= 15 || matches!(n, 4 | 5 | 10) { self.leading(right) } else { 0.0 }));
         }
         if right == 22 {
-            let width = trailing(left);
+            let width = self.trailing(left);
             let full = n >= 15 || matches!(n, 4 | 5 | 10) || (matches!(n, 12..=14) && matches!(left, 6 | 31));
             let discrete = n == 6 || (matches!(n, 7 | 8 | 11) && matches!(left, 2 | 6 | 21 | 28..=31));
             return Some(if full {
@@ -114,6 +132,14 @@ impl<'a> Rules<'a> {
         Ok(Some(Self { preset, rows }))
     }
 
+    /// Blank body portions for the preset's regional punctuation convention.
+    pub fn leading(&self, class: i16) -> f64 {
+        self.preset.leading(class)
+    }
+    pub fn trailing(&self, class: i16) -> f64 {
+        self.preset.trailing(class)
+    }
+
     pub fn pair(&self, left: i16, right: i16) -> Aki {
         if let Some(row) = self
             .rows
@@ -139,7 +165,7 @@ impl<'a> Rules<'a> {
         {
             return Aki::fixed(0.0);
         }
-        let punctuation = trailing(left).max(leading(right));
+        let punctuation = self.trailing(left).max(self.leading(right));
         if punctuation > 0.0 {
             return Aki { min: 0.0, desired: punctuation, max: punctuation, priority: 1, discrete: false };
         }
@@ -238,6 +264,21 @@ pub fn class(c: char) -> i16 {
 mod tests {
     use super::*;
     use crate::cjk::MojikumiTable;
+
+    #[test]
+    fn regional_punctuation_retains_the_correct_side_bearings() {
+        let styles = Styles::default();
+        let traditional = Rules::resolve(&styles, "TradChineseDefault").unwrap().unwrap();
+        let simplified = Rules::resolve(&styles, "SimpChineseDefault").unwrap().unwrap();
+        assert_eq!(traditional.leading(class('。')), 0.25);
+        assert_eq!(traditional.trailing(class('。')), 0.25);
+        assert_eq!(simplified.leading(class('。')), 0.0);
+        assert_eq!(simplified.trailing(class('。')), 0.5);
+        assert_eq!(traditional.pair(12, class('。')).desired, 0.25);
+        assert_eq!(simplified.pair(12, class('。')).desired, 0.0);
+        assert_eq!(simplified.leading(class('：')), 0.0);
+        assert_eq!(simplified.trailing(class('：')), 0.5);
+    }
 
     #[test]
     fn all_public_presets_have_distinct_documented_edges() {

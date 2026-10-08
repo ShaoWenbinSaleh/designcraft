@@ -913,6 +913,7 @@ fn shape_segment(
             (sg.x_offset as f64 * k * hs, -(sg.y_offset as f64) * k * p.v_scale)
         };
         let (ascent, descent) = if up { (em_top * k_v, -em_bottom * k_v) } else { (ascent, descent) };
+        let body = adv;
         if ch == SOFT_HYPHEN {
             adv = 0.0;
         } else if last_in_cluster {
@@ -950,6 +951,7 @@ fn shape_segment(
             break_after: None,
             cjk_hang: 0.0,
             moji: crate::mojikumi::Metrics {
+                body,
                 explicit_before: p.leading_aki.is_some(),
                 explicit_after: p.trailing_aki.is_some(),
                 ..Default::default()

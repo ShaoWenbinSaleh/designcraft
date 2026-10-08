@@ -2293,3 +2293,33 @@ fn mojikumi_nonfloating_and_leading_only_compression_fit_ragged_lines() {
         }
     }
 }
+
+#[test]
+fn mojikumi_places_custom_gap_after_combining_marks() {
+    use designcraft_doc::cjk::{MojikumiAki, MojikumiTable};
+    let (mut d, sid, _) = doc_with("A\u{0323}\u{0301}1", Rect::new(0.0, 0.0, 200.0, 100.0), ParaAttrs::default());
+    let natural = compose_story(&d, sid, &ComposeOptions::default());
+    let old = &all_lines(&natural)[0].glyphs;
+    assert!(old.len() >= 3, "Exercise a cluster with a separate combining glyph");
+    Arc::make_mut(&mut d.styles).mojikumi_tables.push(MojikumiTable {
+        name: "Clusters".into(),
+        based_on: "SimpChineseDefault".into(),
+        overrides: vec![MojikumiAki {
+            target_class: 18,
+            side_class: 25,
+            after: true,
+            minimum: 1.0,
+            desired: 1.0,
+            maximum: 1.0,
+            ..Default::default()
+        }],
+    });
+    d.story_mut(sid).unwrap().paras[0].para.mojikumi = Some("MojikumiTable/Clusters".into());
+    let result = compose_story(&d, sid, &ComposeOptions::default());
+    let new = &all_lines(&result)[0].glyphs;
+    assert_eq!(new.len(), old.len());
+    for (before, after) in old.iter().zip(new) {
+        let expected = if before.rendered_char == '1' { 12.0 } else { 0.0 };
+        assert!((after.x - before.x - expected).abs() < 0.001, "Glyph {:?} moved incorrectly", before.rendered_char);
+    }
+}
