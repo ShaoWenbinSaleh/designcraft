@@ -2652,6 +2652,23 @@ fn find_font(app: &mut DesignApp, ui: &mut egui::Ui, d: &mut Dialog) {
             }
         }
     });
+    let key = format!("{}\n{}", d.s("family"), d.s("style"));
+    if let Some(font) = fonts.iter().find(|f| f["family"] == d.s("family") && f["style"] == d.s("style")) {
+        if d.s("_fontKey") != key {
+            d.fields.insert("_fontKey".into(), json!(key));
+            d.fields.insert("toFamily".into(), font["resolvedFamily"].clone());
+            d.fields.insert("toStyle".into(), font["resolvedStyle"].clone());
+        }
+        crate::rtl::label(
+            ui,
+            format!(
+                "{}: {} {}",
+                crate::i18n::tr(&app.ui.language, "Currently Rendered With"),
+                font["resolvedFamily"].as_str().unwrap_or(""),
+                font["resolvedStyle"].as_str().unwrap_or("")
+            ),
+        );
+    }
     ui.add_space(8.0);
     crate::rtl::label(ui, egui::RichText::new(crate::i18n::tr(&app.ui.language, "Replace With")).font(semibold(12.0)));
     let db = crate::panels::fonts(app);

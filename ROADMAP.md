@@ -1,5 +1,7 @@
 # DesignCraft roadmap
 
+- FONT6: localized and legacy family/style names share canonical resolution across shaping, inventory and replacement. Known compatible and script-based substitutes retain missing status; Find Font shows the resolved face and offers it as the replacement, while preflight reports unavailable styles.
+
 - FONT5: missing-glyph preflight inspects rendered characters in generated labels, including zero-length continuation glyphs, and identifies the owning page frame for nested text.
 
 - FONT4: generated note labels resolve composite character mappings and glyph fallback while retaining a single source anchor; composed glyphs retain the actual rendered character for diagnostics.

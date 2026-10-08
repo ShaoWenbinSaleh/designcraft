@@ -134,6 +134,16 @@ pub fn check(s: &Session, min_ppi: f64) -> Vec<Issue> {
     // Use the same effective character-to-font mapping as Find Font, including
     // anonymous note/cell stories. Unused composite entries are not missing text.
     for font in super::fonts::used_fonts(d) {
+        if font.style_missing {
+            out.push(Issue {
+                severity: "error",
+                kind: "missingFontStyle",
+                message: format!("Missing font style: {} {} (using {} {})", font.family, font.style, font.resolved_family, font.resolved_style),
+                item: None,
+                page: None,
+            });
+        }
+
         if font.missing && !missing_fonts.contains(&font.family) {
             missing_fonts.push(font.family);
         }

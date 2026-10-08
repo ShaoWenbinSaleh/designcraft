@@ -13,7 +13,7 @@ use crate::{Result, Session};
 
 pub fn specs() -> Vec<CommandSpec> {
     vec![
-        cmd!(query "font.list", "Fonts in Document", [], None, "{} → [{family, style, characters, missing, styleMissing, source: bundled|installed|document|added (null when missing)}] (missing first)", has_doc, |s, _| {
+        cmd!(query "font.list", "Fonts in Document", [], None, "{} → [{family, style, characters, missing, styleMissing, source: bundled|installed|document|added (null when missing), matchStatus: exact|styleSubstitute|missing, resolvedFamily, resolvedStyle}] (missing first)", has_doc, |s, _| {
             Ok(Value::Array(list(&s.doc()?.doc)))
         }),
         cmd!(
@@ -48,6 +48,9 @@ pub(super) struct UsedFont {
     pub missing: bool,
     pub style_missing: bool,
     pub source: Option<&'static str>,
+    pub match_status: &'static str,
+    pub resolved_family: String,
+    pub resolved_style: String,
 }
 
 fn list(d: &Document) -> Vec<Value> {
@@ -84,14 +87,31 @@ pub(super) fn used_fonts(d: &Document) -> Vec<UsedFont> {
         .into_iter()
         .map(|((family, style), n)| {
             let missing = !db.has_family(&family);
-            let style_missing = !missing && !db.styles(&family).iter().any(|s| s.eq_ignore_ascii_case(&style));
+            let style_missing = !missing && !db.has_style(&family, &style);
+            let resolved = db.face(&family, &style);
             let source = (!missing).then(|| match db.face(&family, &style).source {
                 FontSource::Bundled => "bundled",
                 FontSource::Installed(_) => "installed",
                 FontSource::Document(_) => "document",
                 FontSource::Memory => "added",
             });
-            UsedFont { family, style, characters: n, missing, style_missing, source }
+            UsedFont {
+                family,
+                style,
+                characters: n,
+                missing,
+                style_missing,
+                source,
+                match_status: if missing {
+                    "missing"
+                } else if style_missing {
+                    "styleSubstitute"
+                } else {
+                    "exact"
+                },
+                resolved_family: resolved.family.clone(),
+                resolved_style: resolved.style.clone(),
+            }
         })
         .collect();
     out.sort_by_key(|font| !(font.missing || font.style_missing));
@@ -122,10 +142,13 @@ fn replace(s: &mut Session, p: &Value) -> Result<Value> {
         return Err(bad("font.replace", "Choose an available replacement font family"));
     }
     if let Some(style) = &to_style
-        && !db.styles(&to_family).iter().any(|available| available.eq_ignore_ascii_case(style))
+        && !db.has_style(&to_family, style)
     {
         return Err(bad("font.replace", "Choose an available replacement font style"));
     }
+    let resolved = db.face(&to_family, to_style.as_deref().or(style.as_deref()).unwrap_or("Regular"));
+    let to_family = resolved.family.clone();
+    let to_style = (to_style.is_some() || style.is_some()).then(|| resolved.style.clone());
     let styles_too = p.get("redefineStyles").and_then(Value::as_bool).unwrap_or(true);
     s.edit(|d, _| {
         let mut changed = 0usize;
@@ -156,16 +179,14 @@ fn replace(s: &mut Session, p: &Value) -> Result<Value> {
                         if effective.font_family.eq_ignore_ascii_case(&family)
                             && style.as_ref().is_none_or(|s| effective.font_style.eq_ignore_ascii_case(s))
                         {
-                            ranges.push(start..end);
+                            ranges.push((start..end, db.face(&to_family, to_style.as_deref().unwrap_or(&effective.font_style)).style.clone()));
                         }
                     }
                 }
-                for range in ranges {
+                for (range, replacement_style) in ranges {
                     st.format_chars(range, |format| {
                         format.over.font_family = Some(to_family.clone());
-                        if let Some(style) = &to_style {
-                            format.over.font_style = Some(style.clone());
-                        }
+                        format.over.font_style = Some(replacement_style.clone());
                     });
                     changed += 1;
                 }
@@ -185,9 +206,7 @@ fn replace(s: &mut Session, p: &Value) -> Result<Value> {
                 for e in &mut f.entries {
                     if e.family.eq_ignore_ascii_case(&family) && style.as_ref().is_none_or(|s| e.style.eq_ignore_ascii_case(s)) {
                         e.family.clone_from(&to_family);
-                        if let Some(s) = &to_style {
-                            e.style.clone_from(s);
-                        }
+                        e.style = db.face(&to_family, to_style.as_deref().unwrap_or(&e.style)).style.clone();
                         changed += 1;
                     }
                 }
@@ -310,5 +329,35 @@ mod composite_tests {
         assert_eq!(s.doc().unwrap().doc.styles.composite_fonts[0].entries[1].characters, "1");
         s.execute("edit.undo", &json!({})).unwrap();
         assert_eq!(s.doc().unwrap().doc.styles.composite_fonts[0].entries[1].family, "Missing Note Digits");
+    }
+}
+
+#[cfg(test)]
+mod resolution_tests {
+    use super::*;
+
+    #[test]
+    fn inventory_distinguishes_missing_styles_and_replacement_chooses_an_available_style() {
+        let mut s = Session::new();
+        s.execute("file.new", &json!({})).unwrap();
+        s.execute("frame.create", &json!({"rect":[20,20,300,400],"content":"text","text":"Body"})).unwrap();
+        let d = Arc::make_mut(&mut s.doc_mut().unwrap().doc);
+        let sid = *d.stories.keys().next().unwrap();
+        d.story_mut(sid).unwrap().format_chars(0..4, |f| {
+            f.over.font_family = Some("Source Sans 3".into());
+            f.over.font_style = Some("Unavailable Style".into());
+        });
+        let before = s.execute("font.list", &json!({})).unwrap();
+        assert_eq!(before[0]["matchStatus"], "styleSubstitute");
+        assert_eq!(before[0]["missing"], false);
+        assert_eq!(before[0]["styleMissing"], true);
+        assert_eq!(before[0]["resolvedStyle"], "Regular");
+        let preflight = s.execute("preflight.run", &json!({})).unwrap();
+        assert!(preflight["issues"].as_array().unwrap().iter().any(|i| i["kind"] == "missingFontStyle"));
+        s.execute("font.replace", &json!({"family":"Source Sans 3","toFamily":"Source Serif 4"})).unwrap();
+        let after = s.execute("font.list", &json!({})).unwrap();
+        assert_eq!(after[0]["matchStatus"], "exact");
+        s.execute("edit.undo", &json!({})).unwrap();
+        assert_eq!(before, s.execute("font.list", &json!({})).unwrap());
     }
 }
