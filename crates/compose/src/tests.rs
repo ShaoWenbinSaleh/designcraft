@@ -2323,3 +2323,22 @@ fn mojikumi_places_custom_gap_after_combining_marks() {
         assert!((after.x - before.x - expected).abs() < 0.001, "Glyph {:?} moved incorrectly", before.rendered_char);
     }
 }
+
+#[test]
+fn mojikumi_does_not_restore_fullwidth_blanks_to_narrow_tracked_punctuation() {
+    let family = "Mojikumi Narrow Body";
+    let font = designcraft_fonts::testing::font_mapping(family, &[('（', 'i'), ('A', 'A')]).unwrap();
+    designcraft_fonts::FontDb::global().add_font(font);
+    let (mut d, sid, _) = doc_with("（A", Rect::new(0.0, 0.0, 200.0, 100.0), ParaAttrs::default());
+    d.story_mut(sid).unwrap().format_chars(0.."（A".len(), |f| {
+        f.over.font_family = Some(family.into());
+        f.over.tracking = Some(1000.0);
+    });
+    let natural = compose_story(&d, sid, &ComposeOptions::default());
+    d.story_mut(sid).unwrap().paras[0].para.mojikumi = Some("SimpChineseDefault".into());
+    let result = compose_story(&d, sid, &ComposeOptions::default());
+    for (a, b) in all_lines(&natural)[0].glyphs.iter().zip(&all_lines(&result)[0].glyphs) {
+        assert!((a.x - b.x).abs() < 0.001);
+        assert!((a.adv - b.adv).abs() < 0.001);
+    }
+}

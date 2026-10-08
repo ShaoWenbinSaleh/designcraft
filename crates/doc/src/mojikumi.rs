@@ -136,13 +136,35 @@ impl<'a> Rules<'a> {
         self.preset.trailing(class)
     }
 
-    pub fn pair(&self, left: i16, right: i16) -> Aki {
-        if let Some(row) = self
-            .rows
+    fn override_pair(&self, left: i16, right: i16) -> Option<&MojikumiAki> {
+        self.rows
             .iter()
             .rev()
             .find(|r| if r.after { r.target_class == left && r.side_class == right } else { r.target_class == right && r.side_class == left })
-        {
+    }
+
+    /// Preset spacing restores only blank removed from shaped punctuation bodies.
+    /// Explicit custom rows retain their requested dimensions.
+    pub fn pair_with_bodies(&self, left: i16, right: i16, after_left: f64, before_right: f64) -> Aki {
+        let mut aki = self.pair(left, right);
+        if self.override_pair(left, right).is_none() {
+            let missing = if matches!(left, 22 | 23) {
+                self.leading(right) - before_right
+            } else if right == 22 {
+                self.trailing(left) - after_left
+            } else {
+                self.trailing(left).max(self.leading(right)) - after_left.max(before_right)
+            }
+            .max(0.0);
+            aki.min = (aki.min - missing).max(0.0);
+            aki.desired = (aki.desired - missing).max(0.0);
+            aki.max = (aki.max - missing).max(0.0);
+        }
+        aki
+    }
+
+    pub fn pair(&self, left: i16, right: i16) -> Aki {
+        if let Some(row) = self.override_pair(left, right) {
             return Aki {
                 min: row.minimum,
                 desired: row.desired,
@@ -283,6 +305,8 @@ mod tests {
         assert_eq!(simplified.pair(12, class('。')).desired, 0.0);
         assert_eq!(simplified.leading(class('：')), 0.0);
         assert_eq!(simplified.trailing(class('：')), 0.5);
+        assert!((simplified.pair_with_bodies(6, 12, 0.1, 0.0).desired - 0.1).abs() < 1e-9);
+        assert_eq!(simplified.pair_with_bodies(22, 27, 0.0, 0.0).desired, 0.0);
     }
 
     #[test]
@@ -328,6 +352,7 @@ mod tests {
         });
         let rule = Rules::resolve(&styles, "MojikumiTable/Pair").unwrap().unwrap();
         assert_eq!(rule.pair(18, 12).desired, 0.2);
+        assert_eq!(rule.pair_with_bodies(18, 12, 0.0, 0.0).desired, 0.2);
         assert_eq!(rule.pair(12, 18).desired, 0.25);
         assert!(Rules::resolve(&styles, "Unknown").is_err());
         assert!(Rules::resolve(&styles, "Nothing").unwrap().is_none());

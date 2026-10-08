@@ -10,6 +10,10 @@ pub struct Metrics {
     pub active: bool,
     /// Shaped body width before tracking and manual character spacing.
     pub body: f64,
+    pub tsume_before: f64,
+    pub tsume_after: f64,
+    pub blank_before: f64,
+    pub blank_after: f64,
     /// Desired internal gap attached to this glyph's advance.
     pub gap: f64,
     pub stretch: f64,
@@ -67,10 +71,12 @@ pub fn apply(glyphs: &mut [Glyph], styles: &Styles, name: &str) {
         // Tracking must not make a proportional or half-width glyph appear to
         // contain a removable half-em body. Shaping features already affect body.
         if body >= unit * 0.8 {
-            let before = if cluster[0].moji.explicit_before { 0.0 } else { table.leading(class) * unit };
-            let after = if cluster[0].moji.explicit_after { 0.0 } else { table.trailing(class) * unit };
+            let before = if cluster[0].moji.explicit_before { 0.0 } else { (table.leading(class) * unit - cluster[0].moji.tsume_before).max(0.0) };
+            let after = if cluster[0].moji.explicit_after { 0.0 } else { (table.trailing(class) * unit - cluster[0].moji.tsume_after).max(0.0) };
             let trim = before + after;
             if let Some(owner) = cluster.iter().position(|g| g.adv >= trim) {
+                cluster[0].moji.blank_before = before / unit.max(1e-9);
+                cluster[end - start - 1].moji.blank_after = after / unit.max(1e-9);
                 cluster[owner].adv -= trim;
                 for (i, g) in cluster.iter_mut().enumerate() {
                     g.dx += if i > owner { trim - before } else { -before };
@@ -78,7 +84,7 @@ pub fn apply(glyphs: &mut [Glyph], styles: &Styles, name: &str) {
             }
         }
         let head = &mut cluster[0];
-        head.moji.start_aki = table.pair(if start == 0 { 23 } else { 22 }, class);
+        head.moji.start_aki = table.pair_with_bodies(if start == 0 { 23 } else { 22 }, class, 0.0, head.moji.blank_before);
         head.moji.start = if head.moji.explicit_before { 0.0 } else { head.moji.start_aki.desired * unit };
     }
     for (index, &(start, end)) in clusters.iter().enumerate() {
@@ -93,11 +99,16 @@ pub fn apply(glyphs: &mut [Glyph], styles: &Styles, name: &str) {
             && !glyphs[end - 1].moji.explicit_after
             && !glyphs[next].moji.explicit_before
         {
-            gap = table.pair(class, rules::class(glyphs[next].rendered_char));
+            gap = table.pair_with_bodies(
+                class,
+                rules::class(glyphs[next].rendered_char),
+                glyphs[end - 1].moji.blank_after,
+                glyphs[next].moji.blank_before,
+            );
         }
         let width: f64 = glyphs[start..end].iter().map(|g| g.adv).sum();
         let g = &mut glyphs[end - 1];
-        g.moji.end_aki = table.pair(class, 22);
+        g.moji.end_aki = table.pair_with_bodies(class, 22, g.moji.blank_after, 0.0);
         let desired = (gap.desired * unit).max(-width);
         g.moji.gap = desired;
         g.moji.stretch = (gap.max * unit - desired).max(0.0);
