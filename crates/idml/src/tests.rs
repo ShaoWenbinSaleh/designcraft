@@ -968,11 +968,3 @@ fn malformed_mojikumi_rows_are_not_silently_coerced() {
         assert!(err.contains("Mojikumi"), "{key}={value}: {err}");
     }
 }
-
-#[test]
-fn cid_mojikumi_preference_survives_interchange() {
-    let mut d = import_idml(&fixture_with_story(STORY)).unwrap();
-    d.settings.use_cid_mojikumi = true;
-    let restored = import_idml(&export_idml(&d)).unwrap();
-    assert!(restored.settings.use_cid_mojikumi);
-}

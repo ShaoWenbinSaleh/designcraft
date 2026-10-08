@@ -799,7 +799,6 @@ impl<'a> Ex<'a> {
         let a = &s.advanced_type;
         root.push(
             El::new("TextPreference")
-                .attr("UseCidMojikumi", s.use_cid_mojikumi)
                 .attr("SuperscriptSize", num(a.superscript_size))
                 .attr("SuperscriptPosition", num(a.superscript_position))
                 .attr("SubscriptSize", num(a.subscript_size))

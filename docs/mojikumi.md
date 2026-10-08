@@ -26,29 +26,8 @@ Regression tests cover preset boundary differences, custom override precedence,
 IDML reference round trips, and unsupported names. The implementation must not be
 represented as a byte-for-byte reproduction of Adobe's full preset matrices.
 
-## Composition and validation
+## Audit work
 
-Spacing is attached to complete shaped clusters. Regional punctuation side
-bearings, shaped narrow forms, tracking, manual Tsume and explicit character aki
-are handled before line fitting. Continuous gaps of equal priority share one
-allocation pool; non-floating gaps reach discrete endpoints. Leading-only
-compression is included for ragged lines. Custom rows retain their dimensions.
-
-Import rejects malformed integers, non-finite amounts, inverted ranges and invalid
-priorities. Native document validation uses the same range policy. Unknown integer
-classes remain preservable and receive diagnostics, including in nested notes and
-cells. The bounded supported spacing range is -1 to 100 em.
-
-## Compatibility limits
-
-[Adobe's TextPreference API](https://developer.adobe.com/indesign/uxp/omv/t/TextPreference/)
-defines CID-based classification. The IDML `UseCidMojikumi` preference now survives
-round trips and is accessible through `document.preferences`. The engine currently
-uses Unicode classes. Preflight reports the incompatibility when the document
-requests CID mode and actually renders Adobe-Japan1 CFF fonts with Mojikumi in use;
-it does not flag ordinary Unicode fonts merely because the preference is enabled.
-
-Exact Adobe CID-to-Mojikumi class mapping, complete proprietary preset pair matrices,
-and legacy pre-CS2 vertical-scaling compatibility have not been reproduced or
-certified. Public CMap resources map character codes to CIDs; they are not a
-CID-to-Mojikumi-class oracle. No claim of complete Adobe output parity is made.
+Further audit areas are regional punctuation metrics, shaped cluster boundaries,
+equal-priority allocation, discrete line fitting, input validation, and diagnostics
+for compatibility modes whose glyph classification cannot yet be reproduced.

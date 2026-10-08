@@ -352,10 +352,6 @@ pub struct DocSettings {
     /// Documents saved before the setting existed read as on, the way they were drawn.
     #[serde(default = "yes")]
     pub glyph_fallback: bool,
-    /// Preserve IDML's CID-based Mojikumi request. Unicode classification is
-    /// currently used; preflight reports actual Adobe-Japan1 font use.
-    #[serde(default)]
-    pub use_cid_mojikumi: bool,
 }
 
 impl Default for DocSettings {
@@ -388,7 +384,6 @@ impl Default for DocSettings {
             overprint_black: true,
             track_changes: false,
             glyph_fallback: false,
-            use_cid_mojikumi: false,
         }
     }
 }
